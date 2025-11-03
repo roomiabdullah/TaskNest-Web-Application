@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Loading TaskNest...</title>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <script src="firebase-config.js" type="module"></script>
+
+    <style>
+        body {
+            background-color: #111827;
+            font-family: sans-serif;
+            color: #d1d5db;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        p {
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+
+<body>
+    <p>Loading TaskNest...</p>
+
+    <script type="module">
+        import { auth } from './firebase-config.js';
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // User is logged in, go to dashboard
+                window.location.replace('dashboard.html');
+            } else {
+                // User is logged out, go to login
+                window.location.replace('login.html');
+            }
+        });
+    </script>
+</body>
+
+</html>

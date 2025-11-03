@@ -1,0 +1,26 @@
+/* style.css */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-title {
+    animation: fadeIn 0.8s ease-out forwards;
+}
+
+.priority-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+}
+
+.priority-high { background-color: #881337; } /* Red */
+.priority-medium { background-color: #f59e0b; } /* Amber */
+.priority-low { background-color: #22c55e; } /* Green */
+
+.task-completed h3 {
+    text-decoration: line-through;
+    color: #6b7280; /* Gray */
+}
