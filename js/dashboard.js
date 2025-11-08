@@ -117,7 +117,7 @@ function loadPersonalTasks() {
     currentTeamId = null;
     currentTeam = null;
     contentTitle.textContent = "My Personal Tasks";
-    inviteMemberButton.classList.add('hidden'); // NEW: Hide invite button
+    inviteMemberButton.classList.add('hidden'); // Hide invite button
     addTaskFormContainer.classList.remove('hidden');
     reloadTasks();
 }
@@ -320,7 +320,7 @@ confirmInviteBtn.addEventListener('click', async () => {
     }
 });
 // Moved up in the end of all functions
-// --- Task List & Modal Logic ---
+// --- Task List & Modal Logic (from your app.js) ---
 taskList.addEventListener('click', (e) => {
     if (!currentUserId) return;
 

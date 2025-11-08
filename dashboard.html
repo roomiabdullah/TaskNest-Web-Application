@@ -43,9 +43,8 @@
         </nav>
 
         <main class="flex-1 p-8 overflow-y-auto ml-64">
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">  
-                <h1 id="content-title" class="text-3xl font-bold mb-6">My Personal Tasks</h1>
-                
+            <div id="add-task-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
+                <h1 id="content-title" ...>My Personal Tasks</h1>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                     <input type="text" id="task-title" placeholder="Task Title"
                         class="md:col-span-2 p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
@@ -58,12 +57,13 @@
                         <option value="Low">Low Priority</option>
                     </select>
                     <button id="add-task-button"
-                        class="md:col-span-4 w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition-colors">AddTask
+                        class="md:col-span-4 w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition-colors">
+                        Add Task
                     </button>
                     <button id="invite-member-button"
-                    class="hidden bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
-                    + Invite Member
-                </button>
+                        class="hidden bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
+                        Invite Member
+                    </button>
                 </div>
             </div>
 
