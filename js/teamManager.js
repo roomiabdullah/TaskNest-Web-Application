@@ -322,4 +322,5 @@ export function getTeamTasks(teamId, filters, renderCallback, taskListElement) {
     });
 }
 
+
 // TODO: Add functions for getTeamTasks, addTeamTask, inviteMember, etc.
