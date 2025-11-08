@@ -51,7 +51,23 @@ auth.onAuthStateChanged(user => {
 loginButton.addEventListener('click', () => {
     const email = loginEmail.value;
     const password = loginPassword.value;
+
     auth.signInWithEmailAndPassword(email, password)
+        .then(userCredential => {
+            // --- NEW DATA MIGRATION SCRIPT ---
+            // This runs every time a user logs in to fix stale data.
+            const user = userCredential.user;
+            const userRef = db.collection('users').doc(user.uid);
+
+            // We use .set() with {merge: true} to create the doc
+            // or update it without overwriting other fields (like 'teams').
+            userRef.set({
+                email: user.email.toLowerCase() // Ensures email is present and lowercase
+            }, { merge: true });
+            // --- END MIGRATION SCRIPT ---
+
+            // The onAuthStateChanged listener will handle the redirect.
+        })
         .catch(error => alert(error.message));
 });
 
@@ -65,10 +81,10 @@ signupButton.addEventListener('click', () => {
             // This is essential for storing their personal tasks and team list
             const user = userCredential.user;
             db.collection('users').doc(user.uid).set({
-                email: user.email,
-                teams: [] // Initialize an empty array for their teams
+                email: user.email.toLowerCase(), // <-- Save as lowercase
+                teams: []
             })
-            .catch(err => console.error("Error creating user document: ", err));
+                .catch(err => console.error("Error creating user document: ", err));
         })
         .catch(error => alert(error.message));
 });

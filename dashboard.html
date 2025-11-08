@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,16 +8,17 @@
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
 
     <div id="dashboard-view" class="flex h-screen">
-        
+
         <nav class="w-64 bg-white dark:bg-gray-800 shadow-md flex flex-col fixed h-full">
             <div class="p-4 border-b dark:border-gray-700">
                 <h1 class="text-2xl font-bold text-blue-600">TaskNest</h1>
                 <span id="user-email-display" class="text-sm text-gray-500">Loading...</span>
             </div>
-            
+
             <div class="flex-grow p-4 overflow-y-auto">
                 <h2 class="text-xs font-bold text-gray-400 uppercase mb-2">My Workspace</h2>
                 <a href="#" id="nav-personal-tasks" class="flex items-center p-2 rounded bg-gray-200 dark:bg-gray-700">
@@ -25,10 +27,14 @@
 
                 <h2 class="text-xs font-bold text-gray-400 uppercase mt-6 mb-2">My Teams</h2>
                 <div id="teams-list-nav" class="space-y-1">
-                    </div>
-                <button id="show-create-team-modal" class="mt-4 text-blue-500 hover:underline">+ Create New Team</button>
+                </div>
+                <button id="show-create-team-modal" class="mt-4 text-blue-500 hover:underline">+ Create New
+                    Team</button>
+                <h2 class="text-xs font-bold text-gray-400 uppercase mt-6 mb-2">Pending Invites</h2>
+                <div id="pending-invites-list" class="space-y-2">
+                </div>
             </div>
-            
+
             <div class="p-4 border-t dark:border-gray-700">
                 <button id="logout-button" class="w-full bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700">
                     Logout
@@ -36,25 +42,37 @@
             </div>
         </nav>
 
-        <main class="flex-1 p-8 overflow-y-auto ml-64"> <h1 id="content-title" class="text-3xl font-bold mb-6">My Personal Tasks</h1>
-            
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
+        <main class="flex-1 p-8 overflow-y-auto ml-64">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">  
+                <h1 id="content-title" class="text-3xl font-bold mb-6">My Personal Tasks</h1>
+                
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                    <input type="text" id="task-title" placeholder="Task Title" class="md:col-span-2 p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
-                    <input type="datetime-local" id="task-datetime" class="p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
-                    <select id="task-priority" class="p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <input type="text" id="task-title" placeholder="Task Title"
+                        class="md:col-span-2 p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <input type="datetime-local" id="task-datetime"
+                        class="p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <select id="task-priority"
+                        class="p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
                         <option value="High">High Priority</option>
                         <option value="Medium" selected>Medium Priority</option>
                         <option value="Low">Low Priority</option>
                     </select>
-                    <button id="add-task-button" class="md:col-span-4 w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition-colors">Add Task</button>
+                    <button id="add-task-button"
+                        class="md:col-span-4 w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition-colors">AddTask
+                    </button>
+                    <button id="invite-member-button"
+                    class="hidden bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700">
+                    + Invite Member
+                </button>
                 </div>
             </div>
 
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6 flex items-center justify-between flex-wrap gap-4">
+            <div
+                class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6 flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <label for="filter-status" class="mr-2 font-semibold">Filter:</label>
-                    <select id="filter-status" class="p-2 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <select id="filter-status"
+                        class="p-2 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
                         <option value="all">All Tasks</option>
                         <option value="pending">Pending</option>
                         <option value="completed">Completed</option>
@@ -62,7 +80,8 @@
                 </div>
                 <div>
                     <label for="sort-tasks" class="mr-2 font-semibold">Sort by:</label>
-                    <select id="sort-tasks" class="p-2 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <select id="sort-tasks"
+                        class="p-2 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
                         <option value="priority">Priority</option>
                         <option value="dueDate">Due Date</option>
                     </select>
@@ -70,47 +89,99 @@
             </div>
 
             <div id="task-list" class="space-y-4">
-                </div>
+            </div>
         </main>
     </div>
-    
-    <div id="create-team-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+
+    <div id="create-team-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
             <h2 class="text-2xl font-bold mb-4">Create a New Team</h2>
-            <input type="text" id="new-team-name" placeholder="Team Name (e.g., Project Alpha)" class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded">
+            <input type="text" id="new-team-name" placeholder="Team Name (e.g., Project Alpha)"
+                class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded">
             <div class="flex justify-end gap-4">
                 <button id="cancel-create-team" class="py-2 px-4 rounded bg-gray-300 dark:bg-gray-600">Cancel</button>
                 <button id="confirm-create-team" class="py-2 px-4 rounded bg-blue-600 text-white">Create</button>
             </div>
         </div>
     </div>
-    
+
     <div id="edit-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Edit Task</h2>
-                <button id="close-modal-button" class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">&times;</button>
+                <button id="close-modal-button"
+                    class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">&times;</button>
             </div>
             <form id="edit-task-form">
                 <input type="hidden" id="edit-task-id">
                 <div class="space-y-4">
-                    <input type="text" id="edit-task-title" placeholder="Task Title" class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
-                    <input type="datetime-local" id="edit-task-datetime" class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
-                    <select id="edit-task-priority" class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <input type="text" id="edit-task-title" placeholder="Task Title"
+                        class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <input type="datetime-local" id="edit-task-datetime"
+                        class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
+                    <select id="edit-task-priority"
+                        class="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600">
                         <option value="High">High Priority</option>
                         <option value="Medium">Medium Priority</option>
                         <option value="Low">Low Priority</option>
                     </select>
-                    <button type="submit" class="w-full bg-green-600 text-white p-3 rounded hover:bg-green-700 transition-colors">Save Changes</button>
+                    <div id="progress-slider-container" class="hidden">
+                        <label for="edit-task-progress" class="block text-sm font-medium">Progress: <span
+                                id="progress-value-label">0%</span></label>
+                        <input type="range" id="edit-task-progress" min="0" max="100" value="0"
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <button type="submit"
+                        class="w-full bg-green-600 text-white p-3 rounded hover:bg-green-700 transition-colors">
+                        Save Changes
+                    </button>
                 </div>
             </form>
         </div>
     </div>
+    <div id="invite-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">Invite a Member</h2>
+            <p class="mb-4">Enter the email of the user you want to invite to <strong id="invite-team-name"></strong>.
+            </p>
+            <input type="email" id="invite-email-input" placeholder="user@example.com"
+                class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded">
+            <div class="flex justify-end gap-4">
+                <button id="cancel-invite-btn" class="py-2 px-4 rounded bg-gray-300 dark:bg-gray-600">Cancel</button>
+                <button id="confirm-invite-btn" class="py-2 px-4 rounded bg-blue-600 text-white">Send Invite</button>
+            </div>
+        </div>
+    </div>
+    <div id="updates-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg flex flex-col h-5/6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Progress Updates for "<span id="updates-task-title"></span>"</h2>
+                <button id="close-updates-modal"
+                    class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">&times;</button>
+            </div>
 
+            <div id="updates-list"
+                class="flex-grow overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 rounded mb-4 space-y-3">
+            </div>
+
+            <form id="add-update-form">
+                <label for="update-text" class="block text-sm font-medium mb-2">Add your contribution:</label>
+                <textarea id="update-text" rows="3" class="w-full p-2 bg-gray-200 dark:bg-gray-700 rounded"
+                    placeholder="What work did you do?"></textarea>
+                <button type="submit"
+                    class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition-colors mt-2">Post
+                    Update</button>
+            </form>
+        </div>
+    </div>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
     <script src="js/dashboard.js" type="module"></script>
 </body>
+
 </html>

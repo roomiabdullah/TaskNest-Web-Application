@@ -9,10 +9,7 @@ let currentTasksUnsubscribe = null;
  * @param {object} filters - An object { status: 'all'/'pending'/'completed', sort: 'priority'/'dueDate' }
  * @param {function} renderCallback - The function to call with the new list of tasks.
  */
-export function getPersonalTasks(userId, filters, renderCallback) {
-    if (currentTasksUnsubscribe) {
-        currentTasksUnsubscribe(); // Stop previous listener
-    }
+export function getPersonalTasks(userId, filters, renderCallback, taskListElement) {
 
     let tasksRef = db.collection('users').doc(userId).collection('tasks');
 
@@ -42,7 +39,7 @@ export function getPersonalTasks(userId, filters, renderCallback) {
             tasks.sort((a, b) => priorityMap[a.priority] - priorityMap[b.priority]);
         }
 
-        renderCallback(tasks);
+        renderCallback(tasks, taskListElement); // Pass the taskListElement here
     });
 }
 
@@ -70,7 +67,7 @@ export function addPersonalTask(userId, taskData) {
  * @param {Array} tasks - An array of task objects.
  * @param {HTMLElement} taskListElement - The DOM element to render tasks into.
  */
-export function renderTasks(tasks, taskListElement) {
+export function renderTasks(tasks, taskListElement, userRole = 'personal') {
     taskListElement.innerHTML = ''; // Clear existing tasks
 
     if (tasks.length === 0) {
@@ -96,18 +93,60 @@ export function renderTasks(tasks, taskListElement) {
             }
         }
 
-        taskElement.innerHTML = `
-            <div class="flex-grow">
-                <h3 class="font-semibold text-lg">${task.title}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Due: ${formattedDate}</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <span class="priority-badge priority-${String(task.priority).toLowerCase()}">${task.priority}</span>
+        // --- Button Logic ---
+        let adminButtons = ''; // Start with no buttons
+        if (userRole === 'personal' || userRole === 'admin') {
+            // If user is 'admin', create the button HTML
+            adminButtons = `
                 <button class="toggle-status-button text-sm font-semibold p-2 rounded ${isCompleted ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors">${isCompleted ? 'Undo' : 'Complete'}</button>
                 <button class="edit-task-button text-sm font-semibold p-2 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors">Edit</button>
                 <button class="delete-task-button text-sm font-semibold p-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">Delete</button>
+            `;
+        }
+        // --- Create Updates Button (if needed) ---
+        let updatesButton = '';
+        if (userRole !== 'personal') { // Hide for personal tasks
+            updatesButton = `
+                <button class="view-updates-button text-sm font-semibold p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
+                Updates
+                </button>
+            `;
+        }
+        // --- End Button Logic ---
+
+        // --- Create Progress Bar (if needed) ---
+        let progressBar = '';
+        const progress = task.progress || 0; // Get progress, default to 0
+        if (userRole !== 'personal') { // Only show for team tasks
+            progressBar = `
+            <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mt-2">
+                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progress}%"></div>
+            </div>
+        `;
+        }
+
+        taskElement.innerHTML = `
+            <div class="flex-grow">
+                <h3 class="font-semibold text-lg" data-task-title="true">${task.title}</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Due: ${formattedDate}</p>
+                ${progressBar} 
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <span class="priority-badge priority-${String(task.priority).toLowerCase()}">${task.priority}</span>
+                ${adminButtons} 
+                ${updatesButton} 
             </div>
         `;
         taskListElement.appendChild(taskElement);
     });
+}
+/**
+ * Stops the real-time listener for personal tasks.
+ */
+export function unsubscribeFromPersonalTasks() {
+    if (currentTasksUnsubscribe) {
+        currentTasksUnsubscribe();
+        currentTasksUnsubscribe = null;
+    }
 }
