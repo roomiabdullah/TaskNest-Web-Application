@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    // Users can read/write only their own document
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if request.auth.uid == userId;
+      
+      // Subcollections (tasks, notifications, etc.)
+      match /{document=**} {
+        allow read: if request.auth.uid == userId;
+        allow write: if request.auth.uid == userId;
+      }
+    }
+
+    // ============================================
+    // TEAMS COLLECTION
+    // ============================================
+    match /teams/{teamId} {
+      // Anyone can read a team (to display info)
+      // Only members can read; only admin can write
+      allow read: if request.auth.uid in resource.data.members;
+      
+      // Only the team creator (admin) can update the team
+      allow update: if request.auth.uid == resource.data.createdBy;
+      
+      // Only the team creator can delete the team
+      allow delete: if request.auth.uid == resource.data.createdBy;
+      
+      // Create new teams (anyone authenticated)
+      allow create: if request.auth != null;
+
+      // ============================================
+      // TEAM TASKS SUBCOLLECTION
+      // ============================================
+      match /tasks/{taskId} {
+        // Members can read tasks. Be defensive: ensure the team doc exists
+        allow read: if get(/databases/$(database)/documents/teams/$(teamId)).exists && (
+          (get(/databases/$(database)/documents/teams/$(teamId)).data.members != null && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members) ||
+          request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy
+        );
+
+        // Only admin can create tasks (per your code: addTeamTask)
+        allow create: if get(/databases/$(database)/documents/teams/$(teamId)).exists && request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+
+        // Only admin or the original task creator can update/delete
+        allow update, delete: if get(/databases/$(database)/documents/teams/$(teamId)).exists && (
+          request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy ||
+          (resource.data.createdBy != null && request.auth.uid == resource.data.createdBy)
+        );
+
+        // ============================================
+        // UPDATES SUBCOLLECTION (Task Notes/Comments)
+        // ============================================
+        match /updates/{updateId} {
+          allow read: if request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+          allow create: if request.auth != null; // Any team member can add an update
+          allow delete: if true; // Allow deletion (optional, can be restricted later)
+        }
+
+        // ============================================
+        // SUBTASKS SUBCOLLECTION
+        // ============================================
+        match /subTasks/{subTaskId} {
+          allow read: if request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+          
+          // Only admin can create subtasks
+          allow create: if request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+          
+          // Assigned user or admin can toggle status
+          allow update: if request.auth.uid == resource.data.assignedTo_uid || 
+                           request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+          
+          // Only admin can delete
+          allow delete: if request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+        }
+      }
+    }
+
+    // ============================================
+    // INVITES COLLECTION
+    // ============================================
+    // Invites are stored by email; anyone can write to invites collection
+    // (server-side validation handles permissions)
+    match /invites/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ============================================
+    // NOTIFICATIONS COLLECTION
+    // ============================================
+    match /notifications/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if request.auth.uid == userId || request.auth != null;
+      
+      match /userNotifications/{notificationId} {
+        allow read: if request.auth.uid == userId;
+        allow write: if request.auth.uid == userId || request.auth != null;
+      }
+    }
+
+    // ============================================
+    // DENY ALL OTHER REQUESTS
+    // ============================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

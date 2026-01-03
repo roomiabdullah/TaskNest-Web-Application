@@ -1,7 +1,4 @@
-// auth.js
-
-// Import the services from your config file
-import { auth, db, FieldValue } from '../firebase-config.js';
+import { auth, db } from '../firebase-config.js';
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
@@ -14,10 +11,15 @@ const loginButton = document.getElementById('login-button');
 const showSignup = document.getElementById('show-signup');
 
 // Signup Form
+const signupFirstName = document.getElementById('signup-first-name');
+const signupLastName = document.getElementById('signup-last-name');
 const signupEmail = document.getElementById('signup-email');
 const signupPassword = document.getElementById('signup-password');
 const signupButton = document.getElementById('signup-button');
 const showLogin = document.getElementById('show-login');
+
+// --- RACE CONDITION FIX: State Flag ---
+let isSigningUp = false; 
 
 // View Toggling
 showSignup.addEventListener('click', (e) => {
@@ -34,13 +36,13 @@ showLogin.addEventListener('click', (e) => {
     loginView.classList.remove('hidden');
 });
 
-// Authentication
+// Authentication State Listener
 auth.onAuthStateChanged(user => {
-    if (user) {
-        // User is logged in, redirect them to the dashboard
+    // FIX: Only redirect if we are NOT currently in the middle of signing up
+    if (user && !isSigningUp) {
         window.location.href = 'dashboard.html';
-    } else {
-        // User is logged out, make sure the login form is visible
+    } else if (!user) {
+        // User is logged out, show login
         signupView.classList.add('hidden');
         signupView.classList.remove('flex');
         loginView.classList.remove('hidden');
@@ -54,37 +56,49 @@ loginButton.addEventListener('click', () => {
 
     auth.signInWithEmailAndPassword(email, password)
         .then(userCredential => {
-            // --- NEW DATA MIGRATION SCRIPT ---
-            // This runs every time a user logs in to fix stale data.
-            const user = userCredential.user;
-            const userRef = db.collection('users').doc(user.uid);
-
-            // We use .set() with {merge: true} to create the doc
-            // or update it without overwriting other fields (like 'teams').
-            userRef.set({
-                email: user.email.toLowerCase() // Ensures email is present and lowercase
+            // Data Migration (Optional, keeps data clean)
+            db.collection('users').doc(userCredential.user.uid).set({
+                email: email.toLowerCase()
             }, { merge: true });
-            // --- END MIGRATION SCRIPT ---
-
-            // The onAuthStateChanged listener will handle the redirect.
         })
         .catch(error => alert(error.message));
 });
 
 // Signup User
-signupButton.addEventListener('click', () => {
+signupButton.addEventListener('click', async () => {
+    const firstName = signupFirstName.value;
+    const lastName = signupLastName.value;
     const email = signupEmail.value;
     const password = signupPassword.value;
-    auth.createUserWithEmailAndPassword(email, password)
-        .then(userCredential => {
-            // When a new user signs up, create a document for them
-            // This is essential for storing their personal tasks and team list
-            const user = userCredential.user;
-            db.collection('users').doc(user.uid).set({
-                email: user.email.toLowerCase(), // <-- Save as lowercase
-                teams: []
-            })
-                .catch(err => console.error("Error creating user document: ", err));
-        })
-        .catch(error => alert(error.message));
+
+    if (!firstName || !lastName || !email || !password) {
+        alert("Please fill out all fields.");
+        return;
+    }
+
+    // 1. SET FLAG: Tell the listener to ignore the immediate login event
+    isSigningUp = true;
+
+    try {
+        // 2. Create Auth User
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+
+        // 3. Create Firestore Document (This will now finish safely)
+        await db.collection('users').doc(user.uid).set({
+            firstName: firstName,
+            lastName: lastName,
+            displayName: `${firstName} ${lastName}`,
+            email: user.email.toLowerCase(),
+            teams: []
+        });
+
+        // 4. MANUAL REDIRECT: Now that data is saved, we go to the dashboard
+        window.location.href = 'dashboard.html';
+
+    } catch (error) {
+        console.error("Signup Error:", error);
+        alert(error.message);
+        isSigningUp = false; // Reset flag if it fails
+    }
 });

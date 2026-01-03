@@ -10,6 +10,7 @@ let currentTasksUnsubscribe = null;
  * @param {function} renderCallback - The function to call with the new list of tasks.
  */
 export function getPersonalTasks(userId, filters, renderCallback, taskListElement) {
+    if (currentTasksUnsubscribe) currentTasksUnsubscribe();
 
     let tasksRef = db.collection('users').doc(userId).collection('tasks');
 
@@ -104,25 +105,33 @@ export function renderTasks(tasks, taskListElement, userRole = 'personal') {
             `;
         }
         // --- Create Updates Button (if needed) ---
-        let updatesButton = '';
+        let detailsButton = '';
         if (userRole !== 'personal') { // Hide for personal tasks
-            updatesButton = `
-                <button class="view-updates-button text-sm font-semibold p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
-                Updates
-                </button>
+            detailsButton = `
+            <button class="view-details-button text-sm font-semibold p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
+                Details
+            </button>
             `;
         }
         // --- End Button Logic ---
 
         // --- Create Progress Bar (if needed) ---
         let progressBar = '';
-        const progress = task.progress || 0; // Get progress, default to 0
         if (userRole !== 'personal') { // Only show for team tasks
+            const progress = task.progress || 0; 
+            
+            // REPLACE THE OLD progressBar STRING WITH THIS:
             progressBar = `
-            <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mt-2">
-                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progress}%"></div>
+            <div class="mt-2">
+                <div class="flex justify-between mb-1">
+                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Progress</span>
+                    <span id="progress-text-${task.id}" class="text-xs font-medium text-blue-600 dark:text-blue-400">${progress}%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                    <div id="progress-bar-${task.id}" class="bg-blue-600 h-2.5 rounded-full" style="width: ${progress}%"></div>
+                </div>
             </div>
-        `;
+            `;
         }
 
         taskElement.innerHTML = `
@@ -131,11 +140,11 @@ export function renderTasks(tasks, taskListElement, userRole = 'personal') {
                 <p class="text-sm text-gray-500 dark:text-gray-400">Due: ${formattedDate}</p>
                 ${progressBar} 
             </div>
-            
+
             <div class="flex items-center gap-4">
                 <span class="priority-badge priority-${String(task.priority).toLowerCase()}">${task.priority}</span>
                 ${adminButtons} 
-                ${updatesButton} 
+                ${detailsButton} 
             </div>
         `;
         taskListElement.appendChild(taskElement);
@@ -150,3 +159,4 @@ export function unsubscribeFromPersonalTasks() {
         currentTasksUnsubscribe = null;
     }
 }
+//

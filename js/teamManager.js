@@ -2,6 +2,7 @@
 import { db, auth, FieldValue } from '../firebase-config.js';
 let currentTeamTasksUnsubscribe = null;
 let currentUpdatesUnsubscribe = null;
+let currentInvitesUnsubscribe = null;
 /**
  * Creates a new team and adds the current user as the admin.
  * @param {string} teamName - The name of the new team.
@@ -40,25 +41,57 @@ export async function createTeam(teamName) {
  * @param {string} userId - The UID of the current user.
  * @param {function} callback - Function to run when team data changes.
  */
+/**
+ * Gets a real-time stream of the user's teams AND cleans up stale data.
+ */
 export function getTeamsForUser(userId, callback) {
-    if (!userId) return () => { }; // Return an empty unsubscribe function
+    if (!userId) return () => { };
 
-    // Listen for changes to the user's document
     return db.collection('users').doc(userId)
         .onSnapshot(async (doc) => {
             const userData = doc.data();
             if (userData && userData.teams && userData.teams.length > 0) {
-                // Fetch the details for each team
-                const teamPromises = userData.teams.map(teamID =>
-                    db.collection('teams').doc(teamID).get()
-                );
-                const teamDocs = await Promise.all(teamPromises);
-                const teams = teamDocs
-                    .filter(teamDoc => teamDoc.exists) // Ensure team exists
-                    .map(teamDoc => ({
-                        id: teamDoc.id,
-                        ...teamDoc.data()
-                    }));
+                
+                const staleTeamIds = []; // IDs we need to remove
+                const validTeams = [];   // Teams we will display
+
+                // Check every team in the list
+                const teamPromises = userData.teams.map(async (teamID) => {
+                    try {
+                        const teamDoc = await db.collection('teams').doc(teamID).get();
+                        
+                        // Case 1: Team exists and we have access
+                        if (teamDoc.exists) {
+                            return { id: teamDoc.id, ...teamDoc.data() };
+                        } else {
+                            // Case 2: Team was DELETED
+                            staleTeamIds.push(teamID);
+                            return null;
+                        }
+                    } catch (error) {
+                        // Case 3: We were KICKED (Permission Denied)
+                        // If we can't read the doc, we shouldn't have the ID.
+                        if (error.code === 'permission-denied') {
+                             staleTeamIds.push(teamID);
+                        }
+                        return null;
+                    }
+                });
+
+                // Wait for all checks to finish
+                const results = await Promise.all(teamPromises);
+                const teams = results.filter(t => t !== null);
+
+                // --- SELF-CLEANING BLOCK ---
+                // If we found dead IDs, remove them from the User's profile immediately
+                if (staleTeamIds.length > 0) {
+                    console.log("Cleaning up stale teams:", staleTeamIds);
+                    db.collection('users').doc(userId).update({
+                        teams: FieldValue.arrayRemove(...staleTeamIds)
+                    }).catch(e => console.warn("Cleanup warning:", e));
+                }
+                // ---------------------------
+
                 callback(teams);
             } else {
                 callback([]); // User is in no teams
@@ -139,9 +172,9 @@ export async function inviteMemberByEmail(teamID, teamName, email) {
 export function getInvitesForUser(callback) {
     const user = auth.currentUser;
     if (!user) return () => { };
-
     // Listen for changes to the invites doc matching the user's email
-    return db.collection('invites').doc(user.email.toLowerCase())
+    if (currentInvitesUnsubscribe) currentInvitesUnsubscribe();
+    currentInvitesUnsubscribe = db.collection('invites').doc(user.email.toLowerCase())
         .onSnapshot((doc) => {
             if (doc.exists) {
                 const data = doc.data();
@@ -149,7 +182,22 @@ export function getInvitesForUser(callback) {
             } else {
                 callback([]);
             }
+        }, err => {
+            console.error('Invites listener error for', user.email && user.email.toLowerCase(), err && err.message ? err.message : err);
+            callback([]);
         });
+
+    return currentInvitesUnsubscribe;
+}
+
+/**
+ * Stops the real-time listener for invites.
+ */
+export function unsubscribeFromInvites() {
+    if (currentInvitesUnsubscribe) {
+        currentInvitesUnsubscribe();
+        currentInvitesUnsubscribe = null;
+    }
 }
 
 /**
@@ -255,6 +303,8 @@ export function getTaskUpdates(teamId, taskId, callback) {
             updates.push({ id: doc.id, ...doc.data() });
         });
         callback(updates);
+    }, err => {
+        console.error('Task updates listener error for', teamId, taskId, err && err.message ? err.message : err);
     });
 }
 
@@ -264,13 +314,15 @@ export function getTaskUpdates(teamId, taskId, callback) {
  * @param {string} taskId - The ID of the task.
  * @param {string} updateText - The content of the update.
  */
-export async function addTaskUpdate(teamId, taskId, updateText) {
+// Add 'userName' as the last argument
+export async function addTaskUpdate(teamId, taskId, updateText, userName) {
     const user = auth.currentUser;
     if (!user || !updateText) return Promise.reject("No update text or user.");
 
     const update = {
         text: updateText,
-        createdByEmail: user.email,
+        createdByName: userName, // <-- This now uses the name you passed
+        createdBy_uid: user.uid, // <-- Store UID for security rules
         createdAt: FieldValue.serverTimestamp()
     };
 
@@ -288,6 +340,7 @@ export function unsubscribeFromTaskUpdates() {
 }
 //  Get Team Tasks
 export function getTeamTasks(teamId, filters, renderCallback, taskListElement) {
+    if (currentTeamTasksUnsubscribe) currentTeamTasksUnsubscribe();
 
     let tasksRef = db.collection('teams').doc(teamId).collection('tasks');
 
@@ -319,8 +372,137 @@ export function getTeamTasks(teamId, filters, renderCallback, taskListElement) {
 
         // Pass both tasks and the element to the callback
         renderCallback(tasks, taskListElement);
+    }, err => {
+        console.error('Team tasks listener error for team', teamId, err && err.message ? err.message : err);
+    });
+}
+/**
+ * Adds a new sub-task to a main task.
+ * @param {string} teamId
+ * @param {string} taskId
+ * @param {object} subTaskData - { title, assignedTo: { uid, email } }
+ */
+export async function addSubTask(teamId, taskId, subTaskData) {
+    const user = auth.currentUser;
+    if (!user || !subTaskData.title || !subTaskData.assignedTo) {
+        return Promise.reject("Missing data for sub-task.");
+    }
+
+    await db.collection('teams').doc(teamId).collection('tasks').doc(taskId).collection('subTasks').add({
+        title: subTaskData.title,
+        assignedTo_uid: subTaskData.assignedTo.uid,
+        assignedTo_name: subTaskData.assignedTo.name, // <-- CHANGED from assignedTo_email
+        completed: false,
+        createdBy: user.uid
     });
 }
 
+/**
+ * Toggles the 'completed' status of a sub-task.
+ * @param {string} teamId
+ * @param {string} taskId
+ * @param {string} subTaskId
+ * @param {boolean} currentStatus
+ */
+export async function toggleSubTaskStatus(teamId, taskId, subTaskId, currentStatus) {
+    const user = auth.currentUser;
 
-// TODO: Add functions for getTeamTasks, addTeamTask, inviteMember, etc.
+    // Security check: Make sure user is assigned to this task (or is admin)
+    // For now, we'll just toggle.
+    if (!user) return Promise.reject("No user found.");
+
+    await db.collection('teams').doc(teamId).collection('tasks').doc(taskId).collection('subTasks').doc(subTaskId).update({
+        completed: !currentStatus
+    });
+}
+
+/**
+ * Listens to all sub-tasks for a main task and updates the progress bar.
+ * @param {string} teamId
+ * @param {string} taskId
+ * @param {function} progressCallback - A function to call with the calculated percentage.
+ */
+export function listenToSubtasksForProgress(teamId, taskId, progressCallback) {
+    // We removed the "if (currentSubtasksUnsubscribe)" line
+
+    const subtasksRef = db.collection('teams').doc(teamId).collection('tasks').doc(taskId).collection('subTasks');
+
+    // ADD "return" HERE:
+    return subtasksRef.onSnapshot(snapshot => {
+        if (snapshot.empty) {
+            progressCallback(0); // No sub-tasks, 0% complete
+            return;
+        }
+
+        let completedCount = 0;
+        snapshot.forEach(doc => {
+            if (doc.data().completed) {
+                completedCount++;
+            }
+        });
+
+        const progress = (completedCount / snapshot.size) * 100;
+        progressCallback(Math.round(progress));
+    }, err => {
+        console.error('Subtasks listener error for', teamId, taskId, err && err.message ? err.message : err);
+    });
+}
+/**
+ * Permanently deletes a team.
+ * @param {string} teamId - The ID of the team to delete.
+ */
+export async function deleteTeam(teamId) {
+    const user = auth.currentUser;
+    if (!user || !teamId) return Promise.reject("Invalid data.");
+
+    try {
+        const teamRef = db.collection('teams').doc(teamId);
+        const doc = await teamRef.get();
+        
+        if (!doc.exists) return Promise.reject("Team not found.");
+        if (doc.data().createdBy !== user.uid) {
+            return Promise.reject("Only the Team Admin can delete this team.");
+        }
+
+        // 1. Delete the Team Document
+        await teamRef.delete();
+
+        // 2. IMMEDIATE CLEANUP: Remove ID from the Admin's own profile
+        await db.collection('users').doc(user.uid).update({
+            teams: FieldValue.arrayRemove(teamId)
+        });
+
+    } catch (error) {
+        console.error("Error deleting team:", error);
+        return Promise.reject(error.message);
+    }
+}
+/**
+ * Removes a member from a team.
+ * @param {string} teamId 
+ * @param {string} memberId 
+ */
+/**
+ * Removes a member from a team.
+ * @param {string} teamId 
+ * @param {string} memberId 
+ */
+export async function removeMember(teamId, memberId) {
+    // Security check: simple client-side check
+    if (!teamId || !memberId) return Promise.reject("Invalid IDs.");
+
+    try {
+        // 1. Remove the UID from the 'members' array in the Team document
+        await db.collection('teams').doc(teamId).update({
+            members: FieldValue.arrayRemove(memberId)
+        });
+        
+        // Note: The 'getTeamsForUser' fix we added earlier handles the rest 
+        // (hiding the team from the kicked user's sidebar automatically).
+        
+    } catch (error) {
+        console.error("Error removing member:", error);
+        throw error;
+    }
+} 
+// End of teamManager helpers
