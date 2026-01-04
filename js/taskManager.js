@@ -95,20 +95,21 @@ export function renderTasks(tasks, taskListElement, userRole = 'personal') {
         }
 
         // --- Button Logic ---
-        let adminButtons = ''; // Start with no buttons
+        let adminButtons = ''; 
         if (userRole === 'personal' || userRole === 'admin') {
-            // If user is 'admin', create the button HTML
+            // UPDATED: Used 'text-xs p-1' for mobile and 'md:text-sm md:p-2' for desktop
             adminButtons = `
-                <button class="toggle-status-button text-sm font-semibold p-2 rounded ${isCompleted ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors">${isCompleted ? 'Undo' : 'Complete'}</button>
-                <button class="edit-task-button text-sm font-semibold p-2 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors">Edit</button>
-                <button class="delete-task-button text-sm font-semibold p-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">Delete</button>
+                <button class="toggle-status-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded ${isCompleted ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors">${isCompleted ? 'Undo' : 'Complete'}</button>
+                <button class="edit-task-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors">Edit</button>
+                <button class="delete-task-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">Delete</button>
             `;
         }
-        // --- Create Updates Button (if needed) ---
+        
+        // --- Create Updates Button (Updated for Mobile) ---
         let detailsButton = '';
-        if (userRole !== 'personal') { // Hide for personal tasks
+        if (userRole !== 'personal') { 
             detailsButton = `
-            <button class="view-details-button text-sm font-semibold p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
+            <button class="view-details-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
                 Details
             </button>
             `;

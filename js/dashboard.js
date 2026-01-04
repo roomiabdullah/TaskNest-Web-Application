@@ -805,3 +805,32 @@ manageMembersBtn.addEventListener('click', async () => {
 const closeMembersModalParams = () => manageMembersModal.classList.add('hidden');
 closeManageMembers.addEventListener('click', closeMembersModalParams);
 doneManageMembers.addEventListener('click', closeMembersModalParams);
+
+//toggle script
+const menuBtn = document.getElementById('mobile-menu-btn');
+const sidebar = document.getElementById('sidebar');
+
+if (menuBtn && sidebar) {
+    menuBtn.addEventListener('click', () => {
+        // Toggle visibility
+        sidebar.classList.toggle('hidden');
+        
+        // OPTIONAL: Make it float over content instead of pushing it
+        sidebar.classList.toggle('absolute');
+        sidebar.classList.toggle('z-50'); 
+        sidebar.classList.toggle('h-full');
+    });
+}
+const closeBtn = document.getElementById('close-sidebar-btn');
+
+// Add this listener to handle the "X" button
+if (closeBtn && sidebar) {
+    closeBtn.addEventListener('click', () => {
+        // Toggle the classes exactly like the Menu button did
+        // This will hide the sidebar and reset the position
+        sidebar.classList.toggle('hidden');
+        sidebar.classList.toggle('absolute');
+        sidebar.classList.toggle('z-50');
+        sidebar.classList.toggle('h-full');
+    });
+}
