@@ -1,836 +1,803 @@
 // /src/js/dashboard.js
+import { db } from '../firebase-config.js';
+import { AuthService } from './services/AuthService.js';
+import { TaskService } from './services/TaskService.js';
+import { TeamService } from './services/TeamService.js';
+import { UIManager } from './ui/UIManager.js';
 
-import { auth, db } from '../firebase-config.js';
-import { getPersonalTasks, addPersonalTask, renderTasks as renderTasksUtil, unsubscribeFromPersonalTasks } from './taskManager.js';
-import { setupNotificationListener } from './notifications.js';
-import {
-    createTeam, 
-    getTeamsForUser, 
-    inviteMemberByEmail,
-    getInvitesForUser, 
-    acceptInvite, 
-    declineInvite,
-    getTeamTasks, 
-    addTeamTask, 
-    unsubscribeFromTeamTasks,
-    getTaskUpdates, 
-    addTaskUpdate, 
-    unsubscribeFromTaskUpdates,
-    addSubTask, 
-    toggleSubTaskStatus, 
-    listenToSubtasksForProgress,
-    unsubscribeFromInvites,
-    deleteTeam, 
-    removeMember
-} from './teamManager.js';
+// --- INITIALIZATION ---
+const authService = new AuthService();
+const taskService = new TaskService();
+const teamService = new TeamService();
+const ui = new UIManager();
 
-// --- Global State ---
-let currentUserId = null;      //  Current session in play
-let currentUserName = null;    //  Username 
-let currentView = 'personal';  // 'personal' or 'team'
-let currentTeamId = null;      //  ID of the current team
-let currentTeam = null;        //  The current team object
-let currentDetailTaskId = null;
-let currentDetailTaskTitle = null;
-let activeSubtaskListeners = {}; // (to manage all progress bars)
-let currentInvitesUnsubscribe = null;
-let currentSubtasksUnsubscribe = null; // listener for the details modal subtasks
-let currentTeamsUnsubscribe = null;
-let currentNotificationsUnsubscribe = null;
+let currentUser = null;
+let currentView = 'personal'; // 'personal' | 'team'
+let currentTeam = null;
+let currentTaskDetailId = null; // For the details modal
 
-// --- DOM Elements ---
-const userEmailDisplay = document.getElementById('user-email-display');
-const logoutButton = document.getElementById('logout-button');
-const contentTitle = document.getElementById('content-title');
-const navPersonalTasks = document.getElementById('nav-personal-tasks');
-const addTaskFormContainer = document.getElementById('add-task-container');
+// --- AUTH STATE OBSERVER ---
+authService.observeAuthState(
+    async (user) => {
+        // User Logged In - create a mutable wrapper object
+        currentUser = {
+            uid: user.uid,
+            email: user.email,
+            firebaseUser: user, // Store the Firebase User object
+            displayName: user.email // Default to email
+        };
 
-// -- Task Elements --
-const taskTitleInput = document.getElementById('task-title');
-const taskDatetimeInput = document.getElementById('task-datetime');
-const taskPriorityInput = document.getElementById('task-priority');
-const addTaskButton = document.getElementById('add-task-button');
-const taskList = document.getElementById('task-list');
-const filterStatus = document.getElementById('filter-status');
-const sortTasks = document.getElementById('sort-tasks');
-
-// -- Edit Task Modal --
-const editModal = document.getElementById('edit-modal');
-const closeModalButton = document.getElementById('close-modal-button');
-const editTaskForm = document.getElementById('edit-task-form');
-const editTaskId = document.getElementById('edit-task-id');
-const editTaskTitle = document.getElementById('edit-task-title');
-const editTaskDatetime = document.getElementById('edit-task-datetime');
-const editTaskPriority = document.getElementById('edit-task-priority');
-
-// -- Team Elements --
-const teamsListNav = document.getElementById('teams-list-nav');
-const showCreateTeamModalBtn = document.getElementById('show-create-team-modal');
-const createTeamModal = document.getElementById('create-team-modal');
-const newTeamNameInput = document.getElementById('new-team-name');
-const confirmCreateTeamBtn = document.getElementById('confirm-create-team');
-const cancelCreateTeamBtn = document.getElementById('cancel-create-team');
-const inviteMemberButton = document.getElementById('invite-member-button');
-const deleteTeamButton = document.getElementById('delete-team-button');
-const inviteModal = document.getElementById('invite-modal');
-const inviteTeamName = document.getElementById('invite-team-name');
-const inviteEmailInput = document.getElementById('invite-email-input');
-const cancelInviteBtn = document.getElementById('cancel-invite-btn');
-const confirmInviteBtn = document.getElementById('confirm-invite-btn');
-const pendingInvitesList = document.getElementById('pending-invites-list');
-
-// NEW: Details Modal Elements
-const detailsModal = document.getElementById('details-modal');
-const detailsTaskTitle = document.getElementById('details-task-title');
-const closeDetailsModal = document.getElementById('close-details-modal');
-const addUpdateForm = document.getElementById('add-update-form');
-const updateText = document.getElementById('update-text');
-const updatesList = document.getElementById('updates-list');
-
-// NEW: Manage Members Modal Elements
-const manageMembersBtn = document.getElementById('manage-members-btn');
-const manageMembersModal = document.getElementById('manage-members-modal');
-const closeManageMembers = document.getElementById('close-manage-members');
-const doneManageMembers = document.getElementById('done-manage-members');
-const membersListContainer = document.getElementById('members-list-container');
-
-// NEW: Sub-task Elements
-const addSubtaskForm = document.getElementById('add-subtask-form');
-const subtaskTitle = document.getElementById('subtask-title');
-const subtaskAssignee = document.getElementById('subtask-assignee');
-const subtasksList = document.getElementById('subtasks-list');
-
-// --- Authentication Check ---
-auth.onAuthStateChanged(user => {
-    if (user) {
-        // User is logged in
-        currentUserId = user.uid;
-
-        // --- NEW LOGIC TO FETCH USER NAME ---
-        db.collection('users').doc(user.uid).get().then(doc => {
-            if (doc.exists) {
-                const userData = doc.data();
-                // Get the name, but fallback to email if (for some reason) it doesn't exist
-                const nameToDisplay = userData.displayName || user.email;
-
-                userEmailDisplay.textContent = nameToDisplay;
-                currentUserName = nameToDisplay; // Save for later
+        // Fetch full user profile (for display name)
+        try {
+            const userDoc = await authService.getUserData(user.uid);
+            if (userDoc) {
+                currentUser.displayName = userDoc.displayName || user.email;
+                currentUser.firstName = userDoc.firstName;
+                currentUser.lastName = userDoc.lastName;
             } else {
-                // This case is for old users who signed up before you added names
-                userEmailDisplay.textContent = user.email;
-                currentUserName = user.email;
-            }
-
-            // Initialize the rest of the dashboard AFTER getting the name
-            initializeDashboard(user.uid);
-
-        }).catch(err => {
-            console.error("Error fetching user document:", err);
-            // Fallback on error
-            userEmailDisplay.textContent = user.email;
-            currentUserName = user.email;
-            initializeDashboard(user.uid);
-        });
-        // --- END OF NEW LOGIC ---
-
-    } else {
-        // User is logged out, redirect to login
-        window.location.href = 'login.html';
-    }
-});
-
-// --- Dashboard Initialization ---
-function initializeDashboard(userId) {
-    // Load personal tasks by default
-    loadPersonalTasks();
-    // Start listening for teams
-    if (currentTeamsUnsubscribe) currentTeamsUnsubscribe();
-    currentTeamsUnsubscribe = getTeamsForUser(userId, renderTeamsNav);
-    // NEW: Start listening for invites
-    if (currentInvitesUnsubscribe) currentInvitesUnsubscribe();
-    currentInvitesUnsubscribe = getInvitesForUser(renderInvites);
-    // Start listening for notifications
-    if (currentNotificationsUnsubscribe) currentNotificationsUnsubscribe();
-    currentNotificationsUnsubscribe = setupNotificationListener(userId, (notifications) => {
-        // TODO: Update a "bell icon"
-        console.log(`Unread notifications: ${notifications.length}`);
-    });
-}
-
-// --- View Switching ---
-// --- Task Loading ---
-// Load Personal Tasks
-function loadPersonalTasks() {
-    unsubscribeFromTeamTasks();
-    currentView = 'personal';
-    currentTeamId = null;
-    currentTeam = null;
-    contentTitle.textContent = "My Personal Tasks";
-    inviteMemberButton.classList.add('hidden'); // Hide invite button
-    addTaskFormContainer.classList.remove('hidden');
-    deleteTeamButton.classList.add('hidden'); // <-- Force hide the delete button
-    manageMembersBtn.classList.add('hidden');
-    reloadTasks();
-}
-// Load Team Tasks
-function loadTeamTasks(team) {
-    unsubscribeFromPersonalTasks();
-    currentView = 'team';
-    currentTeamId = team.id;
-    currentTeam = team;
-    contentTitle.textContent = `Team: ${team.name}`;
-
-    const user = auth.currentUser;
-
-    // Check if the user is the admin for this team
-    if (user && team.createdBy === user.uid) {
-        // User is ADMIN
-        inviteMemberButton.classList.remove('hidden');
-        deleteTeamButton.classList.remove('hidden');
-        manageMembersBtn.classList.remove('hidden'); // <-- SHOW BUTTON
-        addTaskFormContainer.classList.remove('hidden'); 
-    } else {
-        // User is MEMBER
-        inviteMemberButton.classList.add('hidden');
-        deleteTeamButton.classList.add('hidden');
-        manageMembersBtn.classList.add('hidden'); // <-- HIDE BUTTON
-        addTaskFormContainer.classList.add('hidden'); 
-    }
-
-    inviteTeamName.textContent = team.name; // Set modal title
-    reloadTasks();
-}
-
-
-// Function to stop all progress listeners
-function stopAllProgressListeners() {
-    // We loop through all the listener functions we've stored
-    Object.values(activeSubtaskListeners).forEach(unsubscribe => {
-        try {
-            if (typeof unsubscribe === 'function') {
-                unsubscribe();
-            }
-        } catch (e) {
-            console.warn('Error while unsubscribing from subtask listener', e);
-        }
-    });
-    // Finally, clear the object
-    activeSubtaskListeners = {};
-}
-// Function to reload tasks
-function reloadTasks() {
-    const filters = {
-        status: filterStatus.value,
-        sort: sortTasks.value
-    };
-
-    // Stop all old listeners before getting new tasks
-    stopAllProgressListeners();
-
-    if (currentView === 'personal') {
-        getPersonalTasks(currentUserId, filters, (tasks, listElement) =>
-            renderTasksUtil(tasks, listElement, 'personal')
-            , taskList);
-
-    } else if (currentView === 'team') {
-        let userRole = 'member';
-        if (currentTeam && currentTeam.createdBy === currentUserId) {
-            userRole = 'admin';
-        }
-
-        getTeamTasks(currentTeamId, filters, (tasks, listElement) => {
-            // 1. Render the main tasks (this creates the HTML with the new text span)
-            renderTasksUtil(tasks, listElement, userRole);
-
-            // 2. NOW, attach listeners to update BOTH the bar and the text
-            tasks.forEach(task => {
-                const progressBar = document.getElementById(`progress-bar-${task.id}`);
-                const progressText = document.getElementById(`progress-text-${task.id}`); // <-- SELECT THE NEW TEXT ID
-
-                if (progressBar) {
-                    const unsubscribe = listenToSubtasksForProgress(currentTeamId, task.id, (progress) => {
-                        // Update Width
-                        progressBar.style.width = `${progress}%`;
-                        
-                        // Update Text (This is the missing piece!)
-                        if (progressText) {
-                            progressText.textContent = `${progress}%`;
-                        }
-                    });
-                    activeSubtaskListeners[task.id] = unsubscribe;
-                }
-            });
-        }, taskList);
-    }
-}
-
-// --- Render Functions ---
-function renderInvites(invites) {
-    pendingInvitesList.innerHTML = ''; // Clear old invites
-    if (invites.length === 0) {
-        pendingInvitesList.innerHTML = '<span class="text-xs text-gray-500">No pending invites.</span>';
-        return;
-    }
-
-    invites.forEach(invite => {
-        const inviteDiv = document.createElement('div');
-        inviteDiv.className = 'p-2 bg-gray-200 dark:bg-gray-700 rounded';
-
-        inviteDiv.innerHTML = `
-            <span class="text-sm font-semibold">Join "${invite.teamName}"</span>
-            <div class="mt-1">
-                <button class="accept-invite-btn text-xs text-green-500 hover:underline">Accept</button>
-                <button class="decline-invite-btn text-xs text-red-500 ml-2 hover:underline">Decline</button>
-            </div>
-        `;
-
-        // Add event listeners directly
-        inviteDiv.querySelector('.accept-invite-btn').addEventListener('click', async () => {
-            try {
-                await acceptInvite(invite);
-                // The listener will auto-update the UI
-            } catch (error) {
-                alert(`Error accepting invite: ${error.message}`);
-            }
-        });
-
-        inviteDiv.querySelector('.decline-invite-btn').addEventListener('click', async () => {
-            try {
-                await declineInvite(invite);
-                // The listener will auto-update the UI
-            } catch (error) {
-                alert(`Error declining invite: ${error.message}`);
-            }
-        });
-
-        pendingInvitesList.appendChild(inviteDiv);
-    });
-}
-// --- Render Functions ---
-function renderTeamsNav(teams) {
-    teamsListNav.innerHTML = ''; // Clear list
-    teams.forEach(team => {
-        const teamLink = document.createElement('a');
-        teamLink.href = '#';
-        teamLink.className = "team-nav-link p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex";
-        teamLink.textContent = team.name;
-        teamLink.dataset.teamId = team.id;
-
-        teamLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            setActiveNav(e.currentTarget); // <-- ADD THIS
-            loadTeamTasks(team);
-        });
-
-        teamsListNav.appendChild(teamLink);
-    });
-}
-
-// Render the list of updates (notes)
-function renderTaskUpdates(updates) {
-    updatesList.innerHTML = ''; // Clear old list
-    if (updates.length === 0) {
-        updatesList.innerHTML = '<p class="text-sm text-gray-500">No updates posted yet.</p>';
-        return;
-    }
-    updates.forEach(update => {
-        const updateDiv = document.createElement('div');
-        updateDiv.className = 'p-3 bg-white dark:bg-gray-700 rounded shadow-sm';
-        const date = update.createdAt ? update.createdAt.toDate().toLocaleString() : 'Just now';
-        updateDiv.innerHTML = `
-            <p class="text-sm">${update.text}</p>
-            <span class="text-xs text-gray-500">by ${update.createdByName} on ${date}</span> 
-        `; // <-- CHANGED from update.createdByEmail
-        updatesList.appendChild(updateDiv);
-    });
-    updatesList.scrollTop = updatesList.scrollHeight; // Auto-scroll
-}
-
-// 5. Render a single sub-task
-function renderSubTask(subtask, id) {
-    const div = document.createElement('div');
-    div.className = 'flex items-center p-2 bg-white dark:bg-gray-700 rounded';
-
-    const isCompleted = subtask.completed;
-    const isAssignedToMe = (subtask.assignedTo_uid === currentUserId);
-
-    let checkbox = `<input type="checkbox" disabled ${isCompleted ? 'checked' : ''}>`;
-    if (isAssignedToMe) {
-        // This user is assigned, so make the checkbox clickable
-        checkbox = `<input type="checkbox" class="subtask-checkbox" data-id="${id}" data-status="${isCompleted}" ${isCompleted ? 'checked' : ''}>`;
-    }
-
-    div.innerHTML = `
-        ${checkbox}
-        <label class="ml-2 flex-grow ${isCompleted ? 'line-through text-gray-500' : ''}">${subtask.title}</label>
-        <span class="text-xs text-gray-400">(${subtask.assignedTo_name})</span>
-    `; // <-- CHANGED from assignedTo_email
-    subtasksList.appendChild(div);
-}
-
-function setActiveNav(activeElement) {
-    // 1. Remove active class from all team links
-    document.querySelectorAll('.team-nav-link').forEach(link => {
-        link.classList.remove('bg-gray-200', 'dark:bg-gray-700');
-    });
-    // 2. Remove active class from personal tasks link
-    navPersonalTasks.classList.remove('bg-gray-200', 'dark:bg-gray-700');
-
-    // 3. Add active class to the one that was clicked
-    activeElement.classList.add('bg-gray-200', 'dark:bg-gray-700');
-}
-// Function for loading Sub Tasks in Team Tasks
-async function loadSubtasksAndMembers() {
-    // 1. Clear old data
-    subtasksList.innerHTML = '';
-    subtaskAssignee.innerHTML = '<option value="">Assign to a member...</option>';
-
-    // 2. Check if user is admin
-    if (currentTeam && currentTeam.createdBy === currentUserId) {
-        addSubtaskForm.classList.remove('hidden');
-
-        // 3. Load member emails into the dropdown
-        for (const uid of currentTeam.members) {
-            const userDoc = await db.collection('users').doc(uid).get();
-            if (userDoc.exists) {
-                const userData = userDoc.data(); // <-- Get user data
-                // Use displayName, fallback to email for old users
-                const nameToDisplay = userData.displayName || userData.email;
-                const option = new Option(nameToDisplay, uid); // <-- Use name
-                subtaskAssignee.add(option);
-            }
-        }
-    } else {
-        addSubtaskForm.classList.add('hidden');
-    }
-
-    // 4. Listen for sub-tasks and render them
-    if (currentSubtasksUnsubscribe) currentSubtasksUnsubscribe();
-    currentSubtasksUnsubscribe = db.collection('teams').doc(currentTeamId).collection('tasks').doc(currentDetailTaskId).collection('subTasks')
-        .onSnapshot(snapshot => {
-            subtasksList.innerHTML = ''; // Clear list on each update
-            if (snapshot.empty) {
-                subtasksList.innerHTML = '<p class="text-sm text-gray-500">No sub-tasks created yet.</p>';
-                return;
-            }
-            snapshot.forEach(doc => {
-                renderSubTask(doc.data(), doc.id);
-            });
-        });
-
-    return currentSubtasksUnsubscribe;
-}
-
-// --- Event Listeners ---
-// navigation personal tasks
-navPersonalTasks.addEventListener('click', (e) => {
-    e.preventDefault();
-    setActiveNav(e.currentTarget);
-    loadPersonalTasks();
-});
-// Logout
-logoutButton.addEventListener('click', () => {
-    unsubscribeFromPersonalTasks();
-    unsubscribeFromTeamTasks();
-    unsubscribeFromTaskUpdates();
-    unsubscribeFromInvites();
-    stopAllProgressListeners();
-    auth.signOut();
-});
-
-// Reload tasks when filters change
-filterStatus.addEventListener('change', reloadTasks);
-sortTasks.addEventListener('change', reloadTasks);
-
-// Add Task
-addTaskButton.addEventListener('click', async () => {
-    const taskData = {
-        title: taskTitleInput.value,
-        dueDate: taskDatetimeInput.value,
-        priority: taskPriorityInput.value
-    };
-
-    try {
-        if (currentView === 'personal') {
-            await addPersonalTask(currentUserId, taskData);
-            taskTitleInput.value = '';
-            taskDatetimeInput.value = '';
-        } else {
-            // Call the new addTeamTask function
-            await addTeamTask(currentTeamId, taskData, currentUserId);
-            // Clear the inputs
-            taskTitleInput.value = '';
-            taskDatetimeInput.value = '';
-        }
-    } catch (error) {
-        alert(error.message || String(error));
-    }
-});
-
-// --- Team Management ---
-showCreateTeamModalBtn.addEventListener('click', () => {
-    createTeamModal.classList.remove('hidden');
-});
-cancelCreateTeamBtn.addEventListener('click', () => {
-    createTeamModal.classList.add('hidden');
-    newTeamNameInput.value = '';
-});
-
-confirmCreateTeamBtn.addEventListener('click', async () => {
-    const teamName = newTeamNameInput.value;
-    try {
-        await createTeam(teamName);
-        newTeamNameInput.value = '';
-        createTeamModal.classList.add('hidden');
-    } catch (error) {
-        alert(error.message || String(error));
-    }
-});
-// --- Invite Management ---
-inviteMemberButton.addEventListener('click', () => {
-    inviteModal.classList.remove('hidden');
-});
-
-cancelInviteBtn.addEventListener('click', () => {
-    inviteModal.classList.add('hidden');
-    inviteEmailInput.value = '';
-});
-
-confirmInviteBtn.addEventListener('click', async () => {
-    const email = inviteEmailInput.value;
-    const teamName = inviteTeamName.textContent;
-
-    try {
-        await inviteMemberByEmail(currentTeamId, teamName, email);
-        alert(`Invite sent to ${email}!`);
-        inviteModal.classList.add('hidden');
-        inviteEmailInput.value = '';
-    } catch (error) {
-        alert(`Error: ${error.message}`);
-    }
-});
-// Moved up in the end of all functions
-// --- Task List & Modal Logic (from your app.js) ---
-taskList.addEventListener('click', (e) => {
-    if (!currentUserId) return;
-
-    const taskElement = e.target.closest('[data-id]');
-    if (!taskElement) return;
-
-    const taskId = taskElement.dataset.id;
-
-    // Determine the correct path to the task
-    let taskRef;
-    if (currentView === 'personal') {
-        taskRef = db.collection('users').doc(currentUserId).collection('tasks').doc(taskId);
-    } else {
-        taskRef = db.collection('teams').doc(currentTeamId).collection('tasks').doc(taskId);
-    }
-
-    // Open Edit Modal
-    if (e.target.classList.contains('edit-task-button')) {
-        taskRef.get().then(doc => {
-            if (doc.exists) {
-                const task = doc.data();
-                editTaskId.value = taskId;
-                editTaskTitle.value = task.title;
-                editTaskDatetime.value = task.dueDate;
-                editTaskPriority.value = task.priority;
-                editModal.classList.remove('hidden');
-            }
-        });
-    }
-
-    // Toggle Status
-    if (e.target.classList.contains('toggle-status-button')) {
-        taskRef.get().then(doc => {
-            if (doc.exists) {
-                taskRef.update({ completed: !doc.data().completed });
-            }
-        });
-    }
-
-    // Delete Task
-    if (e.target.classList.contains('delete-task-button')) {
-        if (confirm("Are you sure you want to delete this task?")) {
-            taskRef.delete().catch(error => console.error("Error deleting task: ", error));
-        }
-    }
-
-    // NEW: Open Details Modal
-    if (e.target.classList.contains('view-details-button')) {
-        const taskTitle = taskElement.querySelector('[data-task-title="true"]').textContent;
-
-        currentDetailTaskId = taskId;
-        currentDetailTaskTitle = taskTitle;
-
-        detailsTaskTitle.textContent = taskTitle;
-        detailsModal.classList.remove('hidden');
-
-        // Start listening for updates
-        getTaskUpdates(currentTeamId, currentDetailTaskId, renderTaskUpdates);
-
-        // FIX: Handle the async function correctly
-        // We call the async function, and when it finishes, we store the result (the unsubscribe function)
-        loadSubtasksAndMembers().then(unsubscribeFn => {
-            currentSubtasksUnsubscribe = unsubscribeFn;
-        }).catch(err => console.error("Error loading subtasks:", err));
-    }
-});
-
-closeModalButton.addEventListener('click', () => {
-    editModal.classList.add('hidden');
-});
-
-// --- ADD THIS BLOCK (Fixes the 'Save' button) ---
-editTaskForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const taskId = editTaskId.value;
-    if (!currentUserId || !taskId) return;
-
-    let taskRef;
-    if (currentView === 'personal') {
-        taskRef = db.collection('users').doc(currentUserId).collection('tasks').doc(taskId);
-    } else {
-        taskRef = db.collection('teams').doc(currentTeamId).collection('tasks').doc(taskId);
-    }
-
-    // Create the object of updates
-    let updates = {
-        title: editTaskTitle.value,
-        dueDate: editTaskDatetime.value,
-        priority: editTaskPriority.value
-    };
-
-    // Save the updates
-    taskRef.update(updates)
-        .then(() => {
-            editModal.classList.add('hidden');
-        })
-        .catch(error => console.error("Error updating task: ", error));
-});
-
-closeDetailsModal.addEventListener('click', () => {
-    detailsModal.classList.add('hidden');
-    updatesList.innerHTML = ''; 
-    subtasksList.innerHTML = ''; 
-    currentDetailTaskId = null;
-    currentDetailTaskTitle = null;
-    
-    unsubscribeFromTaskUpdates(); 
-
-    // FIX: Check if it's actually a function before calling
-    if (typeof currentSubtasksUnsubscribe === 'function') {
-        try { 
-            currentSubtasksUnsubscribe(); 
-        } catch (e) { 
-            console.warn('Error unsubscribing subtasks', e); 
-        }
-    }
-    currentSubtasksUnsubscribe = null;
-});
-
-// Handle posting a new update (note)
-addUpdateForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = updateText.value;
-    if (!text || !currentTeamId || !currentDetailTaskId) return;
-
-    try {
-        // Pass the user's name as a new argument
-        await addTaskUpdate(currentTeamId, currentDetailTaskId, text, currentUserName); // <-- MODIFY THIS
-        updateText.value = ''; // Clear the form
-    } catch (error) {
-        alert(`Error posting update: ${error.message}`);
-    }
-});
-
-// 6. Handle adding a new sub-task
-addSubtaskForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const selectedOption = subtaskAssignee.options[subtaskAssignee.selectedIndex];
-
-    const subTaskData = {
-        title: subtaskTitle.value,
-        assignedTo: {
-            uid: selectedOption.value,
-            name: selectedOption.text // <-- CHANGED from email
-        }
-    };
-
-    try {
-        await addSubTask(currentTeamId, currentDetailTaskId, subTaskData);
-        subtaskTitle.value = '';
-        subtaskAssignee.value = '';
-    } catch (error) {
-        alert(`Error adding sub-task: ${error.message}`);
-    }
-});
-
-// 7. Handle toggling a sub-task
-subtasksList.addEventListener('click', async (e) => {
-    if (e.target.classList.contains('subtask-checkbox')) {
-        const subTaskId = e.target.dataset.id;
-        const currentStatus = e.target.dataset.status === 'true';
-
-        try {
-            // This will toggle the 'completed' field
-            await toggleSubTaskStatus(currentTeamId, currentDetailTaskId, subTaskId, currentStatus);
-            // The listener will auto-update the UI
-        } catch (error) {
-            alert(`Error updating sub-task: ${error.message}`);
-        }
-    }
-});
-deleteTeamButton.addEventListener('click', async () => {
-    if (!currentTeamId) return;
-
-    const confirmed = confirm(`Are you sure you want to delete the team "${currentTeam ? currentTeam.name : ''}"?\nThis action cannot be undone.`);
-    
-    if (confirmed) {
-        try {
-            // 1. Capture the ID before we switch views
-            const teamIdToDelete = currentTeamId;
-
-            // 2. CRITICAL FIX: Switch to Personal View FIRST.
-            // This runs 'unsubscribeFromTeamTasks()' immediately, killing the listeners 
-            // SOONER than the deletion happens. No listeners = No errors.
-            loadPersonalTasks();
-
-            // 3. NOW delete the team from the database
-            await deleteTeam(teamIdToDelete);
-            
-            alert("Team deleted successfully.");
-            
-            // 4. Force refresh the nav to remove the old name
-            getTeamsForUser(currentUserId, renderTeamsNav); 
-
-        } catch (error) {
-            const errorMessage = error.message || error;
-            console.error("Delete failed:", error);
-            // If it failed, we might want to show the error, 
-            // but we are already on the personal screen, which is safe.
-            alert(`Error deleting team: ${errorMessage}`);
-        }
-    }
-});
-manageMembersBtn.addEventListener('click', async () => {
-    if (!currentTeam) return;
-    
-    manageMembersModal.classList.remove('hidden');
-    membersListContainer.innerHTML = '<p class="text-gray-500">Loading...</p>';
-
-    try {
-        // 1. Fetch latest team data to get member UIDs
-        const teamDoc = await db.collection('teams').doc(currentTeam.id).get();
-        const memberIds = teamDoc.data().members;
-
-        // 2. Fetch User Profiles for these IDs
-        const promises = memberIds.map(uid => db.collection('users').doc(uid).get());
-        const userDocs = await Promise.all(promises);
-
-        membersListContainer.innerHTML = ''; // Clear loading text
-
-        userDocs.forEach(doc => {
-            if (!doc.exists) return;
-            const userData = doc.data();
-            const uid = doc.id;
-            const name = userData.displayName || userData.email;
-            const isMe = (uid === currentUserId);
-            
-            // Create UI Row
-            const row = document.createElement('div');
-            row.className = "flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded";
-            
-            let actionBtn = '';
-            // Only show Remove button if it's NOT the admin themselves
-            if (!isMe) {
-                actionBtn = `<button class="remove-member-btn text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded" data-uid="${uid}" data-name="${name}">Remove</button>`;
-            } else {
-                actionBtn = `<span class="text-xs text-gray-400 font-bold">(You)</span>`;
-            }
-
-            row.innerHTML = `
-                <span class="text-sm font-medium">${name}</span>
-                ${actionBtn}
-            `;
-            membersListContainer.appendChild(row);
-        });
-
-        // 3. Attach Listeners to Remove Buttons
-        document.querySelectorAll('.remove-member-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const uidToRemove = e.target.dataset.uid;
-                const nameToRemove = e.target.dataset.name;
-                
-                if(confirm(`Are you sure you want to remove ${nameToRemove} from the team?`)) {
+                // GHOST USER CHECK:
+                // If the user exists in Auth but has no Firestore profile, and is not "brand new",
+                // it means Account Deletion partially failed (data gone, auth remains).
+                const creationTime = new Date(user.metadata.creationTime).getTime();
+                const now = Date.now();
+                // Give a 10s buffer for new account creation latency
+                if (now - creationTime > 10000) {
+                    // Attempt to self-destruct if this is a zombie session
                     try {
-                        await removeMember(currentTeam.id, uidToRemove);
-                        
-                        // 1. Update the Manage Members List UI
-                        e.target.closest('div').remove(); 
-                        
-                        // 2. FIX: Update the local 'currentTeam' data immediately
-                        // This ensures that next time you open a modal, the array is fresh.
-                        if (currentTeam && currentTeam.members) {
-                            currentTeam.members = currentTeam.members.filter(uid => uid !== uidToRemove);
+                        await user.delete();
+                        alert("Account deletion finalized.");
+                        // user.delete() triggers onAuthStateChanged -> returns null -> redirects to login
+                    } catch (err) {
+                        if (err.code === 'auth/requires-recent-login') {
+                            alert("Account data deleted. Please log in again to verify final removal.");
+                        } else {
+                            console.error("Auto-delete failed", err);
+                            alert("Account data removed. Logging out.");
                         }
-
-                        // 3. FIX: Update the "Assign To" dropdown if it's currently open
-                        const assigneeDropdown = document.getElementById('subtask-assignee');
-                        if (assigneeDropdown) {
-                            for (let i = 0; i < assigneeDropdown.options.length; i++) {
-                                if (assigneeDropdown.options[i].value === uidToRemove) {
-                                    assigneeDropdown.remove(i);
-                                    break; 
-                                }
-                            }
-                        }
-
-                        alert(`${nameToRemove} removed.`);
-                    } catch(err) {
-                        alert("Error: " + err.message);
+                        await authService.logout();
                     }
                 }
-            });
+            }
+        } catch (e) { console.warn("Profile fetch error", e); }
+
+        // Update UI Header
+        const nameDisplay = document.getElementById('user-name-display');
+        const emailDisplay = document.getElementById('user-email-display');
+        const initialsDisplay = document.getElementById('user-initials');
+
+        if (nameDisplay) nameDisplay.textContent = currentUser.displayName;
+        if (emailDisplay) emailDisplay.textContent = currentUser.email;
+        if (initialsDisplay) initialsDisplay.textContent = (currentUser.displayName || currentUser.email).charAt(0).toUpperCase();
+
+        // Initialize App
+        initializeDashboard();
+    },
+    () => {
+        // User Logged Out
+        window.location.href = 'login.html';
+    }
+);
+
+// --- DASHBOARD LOGIC ---
+
+function initializeDashboard() {
+    // 1. Load Personal Tasks by default
+    switchToPersonalView();
+
+    // 2. Subscribe to Teams List
+    teamService.subscribeToUserTeams(currentUser.uid, (teams) => {
+        ui.renderTeamList(teams, currentTeam ? currentTeam.id : null, (selectedTeam) => {
+            switchToTeamView(selectedTeam);
         });
 
-    } catch (error) {
-        console.error(error);
-        membersListContainer.innerHTML = '<p class="text-red-500">Error loading members.</p>';
+        // REAL-TIME PERMISSION UPDATE:
+        if (currentView === 'team' && currentTeam) {
+            const updatedTeam = teams.find(t => t.id === currentTeam.id);
+            if (updatedTeam) {
+                currentTeam = updatedTeam;
+                updateTeamPermissionsUI(updatedTeam);
+
+                // If Manage Members modal is open, refresh it
+                const manageModal = document.getElementById('manage-members-modal');
+                if (manageModal && !manageModal.classList.contains('hidden')) {
+                    refreshMembersList(currentTeam.id);
+                }
+
+                // FIX: Real-time update for Subtask Assignee Dropdown
+                // If Task Details modal is open, refresh the assignee dropdown to reflect membership changes
+                const detailsModal = document.getElementById('details-modal');
+                if (detailsModal && !detailsModal.classList.contains('hidden')) {
+                    populateSubtaskAssignees();
+                }
+
+                // Check for admin status change
+                const admins = updatedTeam.admins || [updatedTeam.createdBy];
+                const newRole = admins.includes(currentUser.uid) ? 'admin' : 'member';
+                switchToTeamView(updatedTeam); // Re-render to ensure consistency
+            } else {
+                switchToPersonalView();
+            }
+        }
+    });
+
+    // 3. Subscribe to Invites
+    teamService.subscribeToInvites(currentUser.email, (invites) => {
+        // We need a render method for invites in UIManager?
+        // I checked UIManager, I didn't verify renderInvites explicitly but I can add it or handle it here.
+        // Wait, looking back at my UIManager trace, I didn't see renderInvites. 
+        // I might have missed it or I need to add it.
+        // For safety, I'll inline the render logic or rely on existing DOM elements if UIManager exposed them.
+        renderInvites(invites);
+    });
+
+    // 4. Setup Mobile Tabs
+    ui.setupMobileTabListeners();
+
+    // 5. Sidebar Navigation
+    const navPersonal = document.getElementById('nav-personal-tasks');
+    if (navPersonal) {
+        navPersonal.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchToPersonalView();
+        });
+    }
+}
+
+function switchToPersonalView() {
+    currentView = 'personal';
+    currentTeam = null;
+    taskService.unsubscribeFromTeam(); // Stop team tasks listener
+    teamService.unsubscribeFromTeam(); // Stop team details listener
+    ui.closeMobileMenu(); // Close sidebar on selection
+
+    // Update UI State
+    const contentTitle = document.getElementById('content-title');
+    if (contentTitle) contentTitle.textContent = "My Personal Tasks";
+
+    document.getElementById('add-task-container').classList.remove('hidden');
+    document.getElementById('invite-member-button').classList.add('hidden');
+    document.getElementById('delete-team-button').classList.add('hidden');
+    document.getElementById('manage-members-btn').classList.add('hidden');
+
+    // Subscribe
+    const filters = getFilters();
+    // Set default date to current time
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('task-datetime').value = now.toISOString().slice(0, 16);
+
+    taskService.subscribeToPersonalTasks(currentUser.uid, filters, (tasks) => {
+        ui.renderTasks(tasks, 'personal', handleEditTaskClick, handleToggleTaskStatus, null);
+    });
+}
+
+// --- DETAILS MODAL & SUBTASKS LOGIC ---
+
+let currentSubtaskUnsubscribe = null;
+
+function handleDetailsClick(task) {
+    currentTaskDetailId = task.id;
+    document.getElementById('details-task-title').textContent = task.title;
+    ui.showModal('details-modal');
+
+    // 1. Subscribe to Updates (Notes)
+    taskService.subscribeToTaskUpdates(currentTeam.id, task.id, (updates) => {
+        ui.renderUpdates(updates, currentTeam.members || []);
+    }, (error) => {
+        // Handle permission error (member removed)
+        if (error.code === 'permission-denied' || error.message.includes('permission')) {
+            ui.hideModal('details-modal');
+            // We rely on the team subsciption to redirect the user, but we close modal immediately to avoid "stuck" state
+        }
+    });
+
+    // 2. Subscribe to Subtasks
+    // This will handle the list rendering AND the progress calculation
+    if (currentSubtaskUnsubscribe) currentSubtaskUnsubscribe();
+
+    // Check if current user is admin
+    const admins = currentTeam.admins || [currentTeam.createdBy];
+    const isAdmin = admins.includes(currentUser.uid);
+
+    currentSubtaskUnsubscribe = taskService.subscribeToSubtasks(currentTeam.id, task.id,
+        (progress) => {
+            // Update Progress UI in Modal (if exists)
+            // console.log("Progress:", progress);
+        },
+        (subtasks) => {
+            ui.renderSubtasks(
+                subtasks,
+                currentUser.uid,
+                handleToggleSubtask,
+                currentTeam.members || [],
+                isAdmin,
+                async (subtaskToDelete) => {
+                    if (confirm('Delete this subtask?')) {
+                        await taskService.deleteSubTask(currentTeam.id, task.id, subtaskToDelete.id);
+                    }
+                }
+            );
+        },
+        (error) => {
+            // Handle permission error
+            if (error.code === 'permission-denied' || error.message.includes('permission')) {
+                ui.hideModal('details-modal');
+            }
+        }
+    );
+
+    // 3. Populate Assignee Dropdown (Admin only)
+    if (isAdmin) {
+        document.getElementById('add-subtask-form').classList.remove('hidden');
+        populateSubtaskAssignees();
+    } else {
+        document.getElementById('add-subtask-form').classList.add('hidden');
+    }
+}
+
+async function populateSubtaskAssignees() {
+    const members = [];
+    for (const uid of currentTeam.members) {
+        try {
+            const user = await teamService.getUserDetails(uid);
+            if (user) members.push({ uid, ...user });
+        } catch (e) { console.warn("Member fetch error", e); }
+    }
+    ui.populateMembersDropdown(members);
+}
+
+async function handleToggleSubtask(subtask) {
+    try {
+        await taskService.toggleSubTaskStatus(currentTeam.id, currentTaskDetailId, subtask.id, subtask.completed);
+    } catch (e) { alert(e.message); }
+}
+
+// Add Subtask Form
+document.getElementById('add-subtask-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('subtask-title').value;
+    const assigneeSelect = document.getElementById('subtask-assignee');
+    const uid = assigneeSelect.value;
+    const name = assigneeSelect.options[assigneeSelect.selectedIndex].text;
+
+    if (!title || !uid) return;
+
+    try {
+        await taskService.addSubTask(currentTeam.id, currentTaskDetailId, {
+            title,
+            assignedTo: { uid, name }
+        }, currentUser.uid);
+        document.getElementById('subtask-title').value = '';
+        assigneeSelect.value = '';
+    } catch (e) { alert(e.message); }
+});
+
+// Add Update/Note Form
+document.getElementById('add-update-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const textInput = document.getElementById('update-text');
+    const text = textInput.value.trim();
+
+    if (!text || !currentTeam || !currentTaskDetailId) return;
+
+    try {
+        await taskService.addTaskUpdate(currentTeam.id, currentTaskDetailId, text, currentUser);
+        textInput.value = '';
+    } catch (err) { alert(err.message); }
+});
+
+// Close Details Modal Cleanup
+document.getElementById('close-details-modal').addEventListener('click', () => {
+    ui.hideModal('details-modal');
+    taskService.unsubscribeFromUpdates();
+    if (currentSubtaskUnsubscribe) {
+        currentSubtaskUnsubscribe();
+        currentSubtaskUnsubscribe = null;
+    }
+    currentTaskDetailId = null;
+});
+
+// Sidebar Toggle Logic (Delegated to UIManager)
+// Just ensure the Close button calls the toggle method if not handled by UIManager? 
+// UIManager handles the logical class switch, but we need to bind the click.
+// UIManager constructor found the buttons, but where did we bind the click?
+// In UIManager? No, `ui.toggleMobileMenu` exists but who calls it?
+// dashboard.js line 336 binds `mobile-menu-btn` to `ui.toggleMobileMenu()`.
+// We need to bind the close button and overlay too.
+
+const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+const overlay = document.getElementById('mobile-sidebar-overlay');
+
+if (closeSidebarBtn) {
+    closeSidebarBtn.addEventListener('click', () => ui.toggleMobileMenu());
+}
+if (overlay) {
+    overlay.addEventListener('click', () => ui.toggleMobileMenu());
+}
+
+function updateTeamPermissionsUI(team) {
+    const admins = team.admins || [team.createdBy];
+    const isAdmin = admins.includes(currentUser.uid);
+
+    const method = isAdmin ? 'remove' : 'add';
+    document.getElementById('invite-member-button').classList[method]('hidden');
+    document.getElementById('delete-team-button').classList[method]('hidden');
+    document.getElementById('manage-members-btn').classList[method]('hidden');
+    document.getElementById('add-task-container').classList[method]('hidden');
+}
+
+function switchToTeamView(team) {
+    currentView = 'team';
+    currentTeam = team;
+    taskService.unsubscribeFromPersonal(); // Stop personal listener
+    ui.closeMobileMenu(); // Close sidebar on selection
+
+    // Update UI State
+    const contentTitle = document.getElementById('content-title');
+    if (contentTitle) contentTitle.textContent = `Team: ${team.name}`;
+    document.getElementById('invite-team-name').textContent = team.name;
+
+    updateTeamPermissionsUI(team);
+
+    // Subscribe to Real-time Team Updates (Members, etc.)
+    teamService.subscribeToTeam(team.id, (updatedTeam) => {
+        if (!updatedTeam) {
+            alert("This team was deleted.");
+            switchToPersonalView();
+            return;
+        }
+        currentTeam = updatedTeam;
+        updateTeamPermissionsUI(updatedTeam);
+
+        // Real-time Dropdown Refresh
+        const detailsModal = document.getElementById('details-modal');
+        if (detailsModal && !detailsModal.classList.contains('hidden')) {
+            populateSubtaskAssignees();
+        }
+
+        // Real-time Member List Refresh
+        const manageModal = document.getElementById('manage-members-modal');
+        if (manageModal && !manageModal.classList.contains('hidden')) {
+            refreshMembersList(currentTeam.id);
+        }
+
+    }, (error) => {
+        if (error.code === 'permission-denied') {
+            switchToPersonalView();
+        }
+    });
+
+    const admins = team.admins || [team.createdBy];
+    const isAdmin = admins.includes(currentUser.uid);
+    const role = isAdmin ? 'admin' : 'member';
+
+    // Set default date
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('task-datetime').value = now.toISOString().slice(0, 16);
+
+    // Subscribe
+    const filters = getFilters();
+    taskService.subscribeToTeamTasks(team.id, filters, (tasks) => {
+        ui.renderTasks(tasks, role, handleEditTaskClick, handleToggleTaskStatus, handleDetailsClick);
+
+        tasks.forEach(task => {
+            taskService.subscribeToSubtasks(team.id, task.id, (progress) => {
+                const bar = document.getElementById(`progress-bar-${task.id}`);
+                const text = document.getElementById(`progress-text-${task.id}`);
+                if (bar) bar.style.width = `${progress}%`;
+                if (text) text.textContent = `${progress}%`;
+            });
+        });
+    }, (error) => {
+        // Silently handle permission errors (e.g., removed from team)
+        if (error.code === 'permission-denied' || error.message.includes('permissions')) {
+            console.warn("User lost access to team. Switching to personal view.");
+            switchToPersonalView();
+        } else {
+            console.error("Task subscription error:", error);
+        }
+    });
+}
+
+function getFilters() {
+    return {
+        status: document.getElementById('filter-status').value,
+        sort: document.getElementById('sort-tasks').value
+    };
+}
+
+// --- EVENT HANDLERS (Delegated/Wired) ---
+
+/* Filtering & Sorting */
+document.getElementById('filter-status').addEventListener('change', () => reloadCurrentView());
+document.getElementById('sort-tasks').addEventListener('change', () => reloadCurrentView());
+
+function reloadCurrentView() {
+    if (currentView === 'personal') switchToPersonalView();
+    else switchToTeamView(currentTeam);
+}
+
+/* Task Actions */
+// Note: UIManager attaches these to the buttons
+async function handleToggleTaskStatus(task) {
+    try {
+        if (currentView === 'personal') {
+            await taskService.updatePersonalTask(currentUser.uid, task.id, { completed: !task.completed });
+        } else {
+            // Team task toggle
+            await taskService.updateTeamTask(currentTeam.id, task.id, { completed: !task.completed });
+        }
+    } catch (e) { alert(e.message); }
+}
+
+function handleEditTaskClick(task) {
+    // Populate and show Modal via UIManager?
+    // UIManager has the modal elements but maybe not the inputs cached publically?
+    // I can access them by ID here.
+    const editModal = document.getElementById('edit-modal');
+    document.getElementById('edit-task-id').value = task.id;
+    document.getElementById('edit-task-title').value = task.title;
+    document.getElementById('edit-task-datetime').value = task.dueDate;
+    document.getElementById('edit-task-priority').value = task.priority;
+
+    ui.showModal('edit-modal');
+}
+
+/* Add Task */
+document.getElementById('add-task-button').addEventListener('click', async () => {
+    const title = document.getElementById('task-title').value;
+    if (!title.trim()) {
+        alert("Task title cannot be empty.");
+        return;
+    }
+    const date = document.getElementById('task-datetime').value;
+    const priority = document.getElementById('task-priority').value;
+
+    try {
+        const taskData = { title, dueDate: date, priority };
+        if (currentView === 'personal') {
+            await taskService.addPersonalTask(currentUser.uid, taskData);
+        } else {
+            await taskService.addTeamTask(currentTeam.id, taskData, currentUser.uid);
+        }
+        // Clear inputs
+        document.getElementById('task-title').value = '';
+        document.getElementById('task-datetime').value = '';
+    } catch (e) { alert(e.message); }
+});
+
+/* Create Team */
+document.getElementById('show-create-team-modal').addEventListener('click', () => ui.showModal('create-team-modal'));
+document.getElementById('cancel-create-team').addEventListener('click', () => ui.hideModal('create-team-modal'));
+document.getElementById('confirm-create-team').addEventListener('click', async () => {
+    const name = document.getElementById('new-team-name').value;
+    try {
+        await teamService.createTeam(name, currentUser);
+        ui.hideModal('create-team-modal');
+        document.getElementById('new-team-name').value = '';
+    } catch (e) { alert(e.message); }
+});
+
+/* Invite Member */
+document.getElementById('invite-member-button').addEventListener('click', () => ui.showModal('invite-modal'));
+document.getElementById('cancel-invite-btn').addEventListener('click', () => ui.hideModal('invite-modal'));
+document.getElementById('confirm-invite-btn').addEventListener('click', async () => {
+    const email = document.getElementById('invite-email-input').value;
+    try {
+        await teamService.inviteMember(currentTeam.id, currentTeam.name, email, currentUser);
+        ui.hideModal('invite-modal');
+        document.getElementById('invite-email-input').value = '';
+        alert("Invite sent!");
+    } catch (e) { alert(e.message); }
+});
+
+/* Delete Team */
+document.getElementById('delete-team-button').addEventListener('click', async () => {
+    if (!currentTeam) return;
+    if (confirm(`Are you sure you want to delete the team "${currentTeam.name}"? This cannot be undone.`)) {
+        try {
+            // Unsubscribe from listeners BEFORE deleting to prevent permission errors
+            taskService.unsubscribeFromTeam();
+            await teamService.deleteTeam(currentTeam.id, currentUser.uid);
+            switchToPersonalView();
+        } catch (e) { alert(e.message); }
     }
 });
 
-// Close Modal Logic
-const closeMembersModalParams = () => manageMembersModal.classList.add('hidden');
-closeManageMembers.addEventListener('click', closeMembersModalParams);
-doneManageMembers.addEventListener('click', closeMembersModalParams);
+/* Logout */
+document.getElementById('logout-button').addEventListener('click', () => {
+    authService.logout();
+});
 
-//toggle script
-const menuBtn = document.getElementById('mobile-menu-btn');
-const sidebar = document.getElementById('sidebar');
 
-if (menuBtn && sidebar) {
-    menuBtn.addEventListener('click', () => {
-        // Toggle visibility
-        sidebar.classList.toggle('hidden');
-        
-        // OPTIONAL: Make it float over content instead of pushing it
-        sidebar.classList.toggle('absolute');
-        sidebar.classList.toggle('z-50'); 
-        sidebar.classList.toggle('h-full');
+/* Mobile Menu */
+document.getElementById('mobile-menu-btn').addEventListener('click', () => ui.toggleMobileMenu());
+
+// --- HELPER RENDERS (that were missing in UIManager) ---
+function renderInvites(invites) {
+    const list = document.getElementById('pending-invites-list');
+    list.innerHTML = '';
+    // ... invite render logic inline or simplified ...
+    if (invites.length === 0) {
+        list.innerHTML = '<div class="text-sm text-gray-400">No pending invites.</div>';
+        return;
+    }
+    invites.forEach(invite => {
+        const item = document.createElement('div');
+        item.className = "flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg";
+        item.innerHTML = `
+            <span class="font-medium text-gray-700 dark:text-gray-200">${invite.teamName}</span>
+            <div class="flex gap-2">
+                <button class="accept-btn text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">Accept</button>
+                <button class="decline-btn text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">Decline</button>
+            </div>
+        `;
+        item.querySelector('.accept-btn').addEventListener('click', () => teamService.acceptInvite(invite, currentUser.uid, currentUser.email));
+        item.querySelector('.decline-btn').addEventListener('click', () => teamService.declineInvite(invite, currentUser.email));
+        list.appendChild(item);
     });
 }
-const closeBtn = document.getElementById('close-sidebar-btn');
 
-// Add this listener to handle the "X" button
-if (closeBtn && sidebar) {
-    closeBtn.addEventListener('click', () => {
-        // Toggle the classes exactly like the Menu button did
-        // This will hide the sidebar and reset the position
-        sidebar.classList.toggle('hidden');
-        sidebar.classList.toggle('absolute');
-        sidebar.classList.toggle('z-50');
-        sidebar.classList.toggle('h-full');
+// --- MISSING EVENT LISTENERS ---
+
+// 1. Edit Task Modal
+const closeModalBtn = document.getElementById('close-modal-button');
+if (closeModalBtn) closeModalBtn.addEventListener('click', () => ui.hideModal('edit-modal'));
+
+document.getElementById('edit-task-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('edit-task-id').value;
+    const title = document.getElementById('edit-task-title').value;
+    const date = document.getElementById('edit-task-datetime').value;
+    const priority = document.getElementById('edit-task-priority').value;
+
+    try {
+        const updates = { title, dueDate: date, priority };
+        if (currentView === 'personal') {
+            await taskService.updatePersonalTask(currentUser.uid, id, updates);
+        } else {
+            // Check permissions? Usually handled by backend rules, but UI should be safe.
+            await taskService.updateTeamTask(currentTeam.id, id, updates);
+        }
+        ui.hideModal('edit-modal');
+    } catch (e) { alert(e.message); }
+});
+
+// 2. Task Details Modal
+const closeDetailsBtn = document.getElementById('close-details-modal');
+if (closeDetailsBtn) closeDetailsBtn.addEventListener('click', () => {
+    ui.hideModal('details-modal');
+    // Unsubscribe from real-time updates when closing
+    taskService.unsubscribeFromUpdates();
+    if (currentSubtaskUnsubscribe) {
+        currentSubtaskUnsubscribe();
+        currentSubtaskUnsubscribe = null;
+    }
+});
+
+// 3. Manage Members Modal
+const manageMembersBtn = document.getElementById('manage-members-btn');
+if (manageMembersBtn) {
+    manageMembersBtn.addEventListener('click', async () => {
+        ui.showModal('manage-members-modal');
+        const container = document.getElementById('members-list-container');
+        // Only show loading if empty to prevent flash on re-open if cached? 
+        // Actually always nice to show loading on fresh fetch.
+        container.innerHTML = '<p class="text-sm text-gray-500">Loading...</p>';
+        await refreshMembersList(currentTeam.id);
     });
 }
+
+
+// 4. Profile & Delete Account
+const profileBtn = document.getElementById('profile-section-btn');
+if (profileBtn) {
+    profileBtn.addEventListener('click', () => {
+        // Populate form
+        let first = currentUser.firstName || '';
+        let last = currentUser.lastName || '';
+
+        // Fallback if firstName/lastName not stored but displayName exists
+        if (!first && !last && currentUser.displayName && currentUser.displayName !== currentUser.email) {
+            const names = currentUser.displayName.split(' ');
+            first = names[0] || '';
+            last = names.slice(1).join(' ') || '';
+        }
+
+        document.getElementById('profile-firstname').value = first;
+        document.getElementById('profile-lastname').value = last;
+        document.getElementById('profile-email').value = currentUser.email;
+        ui.showModal('profile-modal');
+    });
+}
+
+document.getElementById('close-profile-modal').addEventListener('click', () => ui.hideModal('profile-modal'));
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const first = document.getElementById('profile-firstname').value;
+    const last = document.getElementById('profile-lastname').value;
+
+    try {
+        const newName = await authService.updateProfile(currentUser, first, last);
+
+        // Update local state
+        currentUser.displayName = newName;
+        currentUser.firstName = first;
+        currentUser.lastName = last;
+
+        // Force update UI text immediately for better UX
+        document.getElementById('user-name-display').textContent = newName;
+        // Update initials
+        document.getElementById('user-initials').textContent = newName.charAt(0).toUpperCase();
+
+        ui.hideModal('profile-modal');
+        alert("Profile updated!");
+    } catch (e) { alert(e.message); }
+});
+
+// Delete Account Flow
+document.getElementById('init-delete-account-btn').addEventListener('click', async () => {
+    // 1. Check for Sole Admin Teams
+    try {
+        const soleAdminTeams = await teamService.checkSoleAdminTeams(currentUser.uid);
+
+        if (soleAdminTeams.length > 0) {
+            // SHOW TRANSFER MODAL
+            ui.hideModal('profile-modal'); // Switch modals
+            ui.showModal('transfer-modal');
+
+            const list = document.getElementById('transfer-list-container');
+            list.innerHTML = '';
+
+            // Render rows for each team
+            for (const team of soleAdminTeams) {
+                const row = document.createElement('div');
+                row.className = "p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50";
+                row.innerHTML = `
+                    <p class="font-bold text-gray-800 dark:text-gray-200 mb-2">${team.name}</p>
+                    <select class="w-full p-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 text-sm transfer-select" data-team-id="${team.id}">
+                        <option value="">Select new admin...</option>
+                    </select>
+                `;
+
+                // Load members for this team to populate dropdown
+                // We need to fetch team members again
+                // Optimization: could be heavy if many teams.
+                const tDoc = await db.collection('teams').doc(team.id).get();
+                const memberIds = tDoc.data().members || [];
+                // Filter out self
+                const otherMemberIds = memberIds.filter(uid => uid !== currentUser.uid);
+
+                const select = row.querySelector('select');
+
+                if (otherMemberIds.length === 0) {
+                    // No one else in team! Just delete team? 
+                    // Policy: If no one else, team gets deleted or orphaned. 
+                    // Let's allow deleting account without transfer if 0 members.
+                    row.innerHTML += `<p class="text-xs text-red-500 mt-1">No other members. Team will be deleted.</p>`;
+                    select.disabled = true;
+                    // Mark as no-transfer needed (null)
+                } else {
+                    for (const mid of otherMemberIds) {
+                        const mUser = await teamService.getUserDetails(mid);
+                        if (mUser) {
+                            const opt = new Option(mUser.displayName || mUser.email, mid);
+                            select.add(opt);
+                        }
+                    }
+                }
+                list.appendChild(row);
+            }
+
+        } else {
+            // No conflicts
+            ui.hideModal('profile-modal');
+            ui.showModal('delete-confirm-modal');
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error checking team status.");
+    }
+});
+
+// Transfer Modal Buttons
+document.getElementById('cancel-transfer-btn').addEventListener('click', () => ui.hideModal('transfer-modal'));
+
+document.getElementById('confirm-transfer-delete-btn').addEventListener('click', async () => {
+    // Collect transfers
+    const transferMap = {};
+    const selects = document.querySelectorAll('.transfer-select');
+    let valid = true;
+    const soleAdminTeams = await teamService.checkSoleAdminTeams(currentUser.uid); // Re-fetch to be safe/have objects
+
+    selects.forEach(sel => {
+        if (!sel.disabled && !sel.value) valid = false;
+        if (sel.value) transferMap[sel.dataset.teamId] = sel.value;
+    });
+
+    if (!valid) {
+        alert("Please select a new admin for all teams.");
+        return;
+    }
+
+    if (confirm("Transfers will be made and your account will be deleted immediately. Continue?")) {
+        try {
+            await authService.deleteAccount(currentUser.firebaseUser, transferMap, soleAdminTeams);
+            // Auth listener handles redirect
+        } catch (e) { alert(e.message); }
+    }
+});
+
+// Final Delete Modal Buttons
+document.getElementById('cancel-delete-final').addEventListener('click', () => ui.hideModal('delete-confirm-modal'));
+
+document.getElementById('confirm-delete-final').addEventListener('click', async () => {
+    try {
+        await authService.deleteAccount(currentUser.firebaseUser); // No transfers needed
+    } catch (e) { alert(e.message); }
+});
+
+const closeManageMembersBtn = document.getElementById('close-manage-members');
+if (closeManageMembersBtn) closeManageMembersBtn.addEventListener('click', () => ui.hideModal('manage-members-modal'));
+
+const doneManageMembersBtn = document.getElementById('done-manage-members');
+if (doneManageMembersBtn) doneManageMembersBtn.addEventListener('click', () => ui.hideModal('manage-members-modal'));
+
+
+// --- GLOBAL HELPERS FOR MEMBER MANAGEMENT ---
+
+async function refreshMembersList(teamId) {
+    if (!teamId) return;
+    const container = document.getElementById('members-list-container');
+
+    try {
+        const teamDoc = await db.collection('teams').doc(teamId).get();
+        if (!teamDoc.exists) return;
+
+        const teamData = teamDoc.data();
+        const memberIds = teamData.members || [];
+
+        // Update global currentTeam if it matches
+        // (This ensures when we click remove/promote, the 'currentTeam' passed to actions is fresh)
+        if (currentTeam && currentTeam.id === teamId) {
+            currentTeam = { id: teamId, ...teamData };
+        }
+
+        const members = [];
+        for (const uid of memberIds) {
+            const user = await teamService.getUserDetails(uid);
+            if (user) members.push({ uid, ...user });
+        }
+
+        // Pass callbacks
+        ui.renderMembers(members, { id: teamId, ...teamData }, currentUser,
+            handleRemoveMember,
+            handlePromoteMember
+        );
+    } catch (e) {
+        if (container) container.innerHTML = '<p class="text-red-500 text-sm">Error loading members</p>';
+        console.error("Error refreshing members", e);
+    }
+}
+
+async function handleRemoveMember(uid) {
+    if (confirm('Remove this member?')) {
+        try {
+            await teamService.removeMember(currentTeam.id, uid, currentUser.uid);
+            // We await the refresh to ensure UI matches DB
+            await refreshMembersList(currentTeam.id);
+        } catch (e) { alert(e.message); }
+    }
+}
+
+async function handlePromoteMember(uid) {
+    if (confirm('Promote this member to Admin?')) {
+        try {
+            await teamService.promoteToAdmin(currentTeam.id, uid, currentUser.uid);
+            await refreshMembersList(currentTeam.id);
+        } catch (e) { alert(e.message); }
+    }
+}
+

@@ -19,7 +19,7 @@ const signupButton = document.getElementById('signup-button');
 const showLogin = document.getElementById('show-login');
 
 // --- RACE CONDITION FIX: State Flag ---
-let isSigningUp = false; 
+let isSigningUp = false;
 
 // View Toggling
 showSignup.addEventListener('click', (e) => {
@@ -53,6 +53,11 @@ auth.onAuthStateChanged(user => {
 loginButton.addEventListener('click', () => {
     const email = loginEmail.value;
     const password = loginPassword.value;
+
+    if (!email || !password) {
+        alert("Fields cannot be empty.");
+        return;
+    }
 
     auth.signInWithEmailAndPassword(email, password)
         .then(userCredential => {

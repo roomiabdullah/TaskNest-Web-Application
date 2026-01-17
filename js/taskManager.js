@@ -1,4 +1,5 @@
 // /src/js/taskManager.js
+import { styles } from './ui-styles.js';
 import { db, FieldValue } from '../firebase-config.js';
 
 let currentTasksUnsubscribe = null;
@@ -69,10 +70,10 @@ export function addPersonalTask(userId, taskData) {
  * @param {HTMLElement} taskListElement - The DOM element to render tasks into.
  */
 export function renderTasks(tasks, taskListElement, userRole = 'personal') {
-    taskListElement.innerHTML = ''; // Clear existing tasks
+    taskListElement.innerHTML = ''; 
 
     if (tasks.length === 0) {
-        taskListElement.innerHTML = '<p class="text-gray-500 text-center">No tasks found. Try changing your filters!</p>';
+        taskListElement.innerHTML = '<p class="text-gray-500 text-center py-8">No tasks found. Try changing your filters!</p>';
         return;
     }
 
@@ -80,74 +81,90 @@ export function renderTasks(tasks, taskListElement, userRole = 'personal') {
         const taskElement = document.createElement('div');
         taskElement.dataset.id = task.id;
 
-        const isCompleted = task.completed;
-        taskElement.className = `bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 ${isCompleted ? 'task-completed opacity-60' : ''}`;
+        // --- 1. CONTAINER STYLE ---
+        const containerClass = task.completed 
+            ? `${styles.taskCard.container} ${styles.taskCard.completedModifier}`
+            : styles.taskCard.container;
+        taskElement.className = containerClass;
 
-        // Handle potential invalid date strings
+        // --- 2. DATE FORMATTING ---
         let formattedDate = 'No due date';
         if (task.dueDate) {
             try {
                 const date = new Date(task.dueDate);
                 formattedDate = date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            } catch (e) {
-                console.warn(`Invalid date format for task ${task.id}: ${task.dueDate}`);
-            }
+            } catch (e) { console.warn(`Invalid date task ${task.id}`); }
         }
 
-        // --- Button Logic ---
-        let adminButtons = ''; 
-        if (userRole === 'personal' || userRole === 'admin') {
-            // UPDATED: Used 'text-xs p-1' for mobile and 'md:text-sm md:p-2' for desktop
-            adminButtons = `
-                <button class="toggle-status-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded ${isCompleted ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white transition-colors">${isCompleted ? 'Undo' : 'Complete'}</button>
-                <button class="edit-task-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors">Edit</button>
-                <button class="delete-task-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">Delete</button>
-            `;
-        }
-        
-        // --- Create Updates Button (Updated for Mobile) ---
+        // --- 3. BUTTONS LOGIC (The Fix) ---
+        let adminButtons = '';
         let detailsButton = '';
-        if (userRole !== 'personal') { 
+
+        // A. Admin Buttons (Visible to Personal user OR Team Admin)
+        if (userRole === 'personal' || userRole === 'admin') {
+            const statusText = task.completed ? 'Undo' : 'Complete';
+            const statusClass = task.completed ? styles.buttons.undo : styles.buttons.complete;
+
+            adminButtons = `
+                <button class="toggle-status-button ${styles.buttons.base} ${statusClass}">
+                    ${statusText}
+                </button>
+                <button class="edit-task-button ${styles.buttons.base} ${styles.buttons.edit} ml-2">
+                    Edit
+                </button>
+                <button class="delete-task-button ${styles.buttons.base} ${styles.buttons.delete} ml-2">
+                    Delete
+                </button>
+            `;
+        }
+
+        // B. Details Button (Visible to ANYONE in a Team, including Admin)
+        // We only hide it if userRole is strictly 'personal'
+        if (userRole !== 'personal') {
             detailsButton = `
-            <button class="view-details-button text-xs md:text-sm font-semibold p-1 md:p-2 rounded bg-gray-500 hover:bg-gray-600 text-white transition-colors">
-                Details
-            </button>
+                <button class="view-details-button ${styles.buttons.base} ${styles.buttons.details} ml-2">
+                    Details
+                </button>
             `;
         }
-        // --- End Button Logic ---
 
-        // --- Create Progress Bar (if needed) ---
-        let progressBar = '';
-        if (userRole !== 'personal') { // Only show for team tasks
-            const progress = task.progress || 0; 
-            
-            // REPLACE THE OLD progressBar STRING WITH THIS:
-            progressBar = `
-            <div class="mt-2">
-                <div class="flex justify-between mb-1">
-                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Progress</span>
-                    <span id="progress-text-${task.id}" class="text-xs font-medium text-blue-600 dark:text-blue-400">${progress}%</span>
+        // --- 4. PROGRESS BAR ---
+        let progressBarHTML = '';
+        if (userRole !== 'personal') {
+            const progress = task.progress || 0;
+            progressBarHTML = `
+            <div class="${styles.progressBar.wrapper}">
+                <div class="${styles.progressBar.header}">
+                    <span class="${styles.progressBar.label}">Progress</span>
+                    <span id="progress-text-${task.id}" class="${styles.progressBar.percentageText}">${progress}%</span>
                 </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
-                    <div id="progress-bar-${task.id}" class="bg-blue-600 h-2.5 rounded-full" style="width: ${progress}%"></div>
+                <div class="${styles.progressBar.track}">
+                    <div id="progress-bar-${task.id}" class="${styles.progressBar.fill}" style="width: ${progress}%"></div>
                 </div>
             </div>
             `;
         }
 
+        // --- 5. PRIORITY BADGE ---
+        const priorityKey = (task.priority || 'low').toLowerCase();
+        const badgeClass = styles.badge[priorityKey] || styles.badge.low;
+
+        // --- 6. INJECT HTML ---
         taskElement.innerHTML = `
-            <div class="flex-grow">
-                <h3 class="font-semibold text-lg" data-task-title="true">${task.title}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Due: ${formattedDate}</p>
-                ${progressBar} 
+            <div class="${styles.taskCard.leftContent}">
+                <h3 class="${styles.text.title}" data-task-title="true">${task.title}</h3>
+                <p class="${styles.text.date}">📅 ${formattedDate}</p>
+                ${progressBarHTML}
             </div>
 
-            <div class="flex items-center gap-4">
-                <span class="priority-badge priority-${String(task.priority).toLowerCase()}">${task.priority}</span>
-                ${adminButtons} 
-                ${detailsButton} 
+            <div class="${styles.taskCard.rightContent}">
+                <span class="${styles.badge.base} ${badgeClass}">${task.priority}</span>
+                <div class="flex items-center flex-wrap gap-y-2 justify-end">
+                    ${adminButtons}
+                    ${detailsButton} </div>
             </div>
         `;
+
         taskListElement.appendChild(taskElement);
     });
 }

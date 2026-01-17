@@ -1,39 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TaskNest - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Plus Jakarta Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        gray: {
+                            850: '#1f2937',
+                            900: '#111827',
+                            950: '#030712',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script type="module" src="js/theme.js"></script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
+
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200">
 
     <div id="login-view" class="flex flex-col items-center justify-center min-h-screen p-4">
-        <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-            <h1 class="text-3xl font-bold text-center mb-2 animate-title">TaskNest Web</h1>
-            <p class="text-center text-gray-500 mb-6">Log in to manage your tasks.</p>
-            <input type="email" id="login-email" placeholder="Email" class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="password" id="login-password" placeholder="Password" class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button id="login-button" class="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 transition-colors">Login</button>
-            <p class="text-center mt-4">Don't have an account? <a href="#" id="show-signup" class="text-blue-500 hover:underline">Sign Up</a></p>
+        <div
+            class="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-8">
+            <h1
+                class="text-3xl font-bold text-center mb-2 animate-title font-display text-blue-600 dark:text-blue-500 tracking-tight">
+                TaskNest</h1>
+            <p class="text-center text-gray-500 dark:text-gray-400 mb-8 font-medium">Welcome back! Please log in.</p>
+
+            <input type="email" id="login-email" placeholder="Email Address"
+                class="input-glow w-full p-3 mb-4 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
+            <input type="password" id="login-password" placeholder="Password"
+                class="input-glow w-full p-3 mb-6 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
+
+            <button id="login-button"
+                class="glow-blue w-full btn-gradient-blue text-white p-3 rounded-xl font-semibold shadow-lg shadow-blue-500/30 active:scale-[0.98]">Login</button>
+
+            <p class="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
+                Don't have an account? <a href="#" id="show-signup"
+                    class="text-blue-600 dark:text-blue-400 font-semibold hover:underline">Sign Up</a>
+            </p>
         </div>
     </div>
 
     <div id="signup-view" class="hidden flex-col items-center justify-center min-h-screen p-4">
-         <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-            <h1 class="text-3xl font-bold text-center mb-2 animate-title">Create Account</h1>
-            <p class="text-center text-gray-500 mb-6">Join TaskNest today.</p>
-            <div class="flex gap-2 mb-4">
-            <input type="text" id="signup-first-name" placeholder="First Name" 
-                class="w-1/2 p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="text" id="signup-last-name" placeholder="Last Name" 
-                class="w-1/2 p-3 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div
+            class="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-8">
+            <h1
+                class="text-3xl font-bold text-center mb-2 animate-title font-display text-blue-600 dark:text-blue-500 tracking-tight">
+                Create Account</h1>
+            <p class="text-center text-gray-500 dark:text-gray-400 mb-8 font-medium">Join your team on TaskNest.</p>
+
+            <div class="flex gap-3 mb-4">
+                <input type="text" id="signup-first-name" placeholder="First Name"
+                    class="input-glow w-1/2 p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
+                <input type="text" id="signup-last-name" placeholder="Last Name"
+                    class="input-glow w-1/2 p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
             </div>
-            <input type="email" id="signup-email" placeholder="Email" class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="password" id="signup-password" placeholder="Password" class="w-full p-3 mb-4 bg-gray-200 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button id="signup-button" class="w-full bg-green-600 text-white p-3 rounded hover:bg-green-700 transition-colors">Sign Up</button>
-            <p class="text-center mt-4">Already have an account? <a href="#" id="show-login" class="text-blue-500 hover:underline">Login</a></p>
+
+            <input type="email" id="signup-email" placeholder="Email Address"
+                class="input-glow w-full p-3 mb-4 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
+            <input type="password" id="signup-password" placeholder="Password"
+                class="input-glow w-full p-3 mb-6 bg-gray-50 dark:bg-gray-900 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-gray-700 focus:border-blue-500 transition-all">
+
+            <button id="signup-button"
+                class="glow-green w-full btn-gradient-green text-white p-3 rounded-xl font-semibold shadow-lg shadow-green-500/30 active:scale-[0.98]">Sign
+                Up</button>
+
+            <p class="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
+                Already have an account? <a href="#" id="show-login"
+                    class="text-blue-600 dark:text-blue-400 font-semibold hover:underline">Login</a>
+            </p>
         </div>
     </div>
 
@@ -43,4 +97,5 @@
 
     <script src="js/auth.js" type="module"></script>
 </body>
+
 </html>
