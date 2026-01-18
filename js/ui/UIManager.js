@@ -196,7 +196,7 @@ export class UIManager {
                             <span id="progress-text-${task.id}">0%</span>
                         </div>
                         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                            <div id="progress-bar-${task.id}" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            <div id="progress-bar-${task.id}" class="progress-gradient h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                         </div>
                     </div>
                 `;
@@ -258,12 +258,25 @@ export class UIManager {
 
     renderTeamList(teams, currentTeamId, onTeamClick) {
         this.teamsListNav.innerHTML = '';
+
+        // Update "My Tasks" nav styling based on whether a team is selected
+        const navPersonal = document.getElementById('nav-personal-tasks');
+        if (navPersonal) {
+            if (currentTeamId) {
+                // Team is selected - deactivate personal nav
+                navPersonal.className = 'flex items-center px-3 py-2.5 rounded-xl text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white transition-all group';
+            } else {
+                // Personal view is active
+                navPersonal.className = 'nav-active flex items-center px-3 py-2.5 rounded-xl bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/30 transition-all group';
+            }
+        }
+
         teams.forEach(team => {
             const button = document.createElement('button');
             const isActive = team.id === currentTeamId;
 
             button.className = `team-nav-link w-full text-left px-4 py-3 rounded-xl transition-all flex items-center gap-3 group ${isActive
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+                ? 'nav-active bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white'
                 }`;
 

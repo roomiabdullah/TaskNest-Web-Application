@@ -15,6 +15,7 @@ let currentUser = null;
 let currentView = 'personal'; // 'personal' | 'team'
 let currentTeam = null;
 let currentTaskDetailId = null; // For the details modal
+let cachedTeams = []; // Store teams list for immediate nav re-render
 
 // --- AUTH STATE OBSERVER ---
 authService.observeAuthState(
@@ -86,6 +87,7 @@ function initializeDashboard() {
 
     // 2. Subscribe to Teams List
     teamService.subscribeToUserTeams(currentUser.uid, (teams) => {
+        cachedTeams = teams; // Cache for immediate re-renders
         ui.renderTeamList(teams, currentTeam ? currentTeam.id : null, (selectedTeam) => {
             switchToTeamView(selectedTeam);
         });
@@ -149,6 +151,11 @@ function switchToPersonalView() {
     taskService.unsubscribeFromTeam(); // Stop team tasks listener
     teamService.unsubscribeFromTeam(); // Stop team details listener
     ui.closeMobileMenu(); // Close sidebar on selection
+
+    // Immediately update nav active state
+    ui.renderTeamList(cachedTeams, null, (selectedTeam) => {
+        switchToTeamView(selectedTeam);
+    });
 
     // Update UI State
     const contentTitle = document.getElementById('content-title');
@@ -331,6 +338,11 @@ function switchToTeamView(team) {
     currentTeam = team;
     taskService.unsubscribeFromPersonal(); // Stop personal listener
     ui.closeMobileMenu(); // Close sidebar on selection
+
+    // Immediately update nav active state
+    ui.renderTeamList(cachedTeams, team.id, (selectedTeam) => {
+        switchToTeamView(selectedTeam);
+    });
 
     // Update UI State
     const contentTitle = document.getElementById('content-title');

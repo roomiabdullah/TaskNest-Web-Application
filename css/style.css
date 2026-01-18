@@ -132,3 +132,50 @@
     background: linear-gradient(180deg, #3b82f6, #8b5cf6);
     border-radius: 0 4px 4px 0;
 }
+
+/* ===== GRADIENT PROGRESS BAR ===== */
+@keyframes progressShine {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.progress-gradient {
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
+    background-size: 200% 100%;
+    animation: progressShine 3s ease infinite;
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 1rem;
+    opacity: 0.3;
+}
+
+/* ===== BADGE PRIORITY PULSE ===== */
+@keyframes priorityPulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.priority-high {
+    animation: priorityPulse 2s ease-in-out infinite;
+}
